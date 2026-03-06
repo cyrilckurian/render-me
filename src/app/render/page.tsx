@@ -242,7 +242,13 @@ function RenderPageContent() {
     const handleGenerate = useCallback(() => {
         if (!promptText) return;
         if (isLoggedIn) { generateRender(floorPlanBase64 || undefined, promptText); }
-        else { savePendingRender(promptText); setPhase("generating"); setTimeout(() => setPhase("authRequired"), 3500); }
+        else {
+            const saved = savePendingRender(promptText);
+            if (saved) {
+                setPhase("generating");
+                setTimeout(() => setPhase("authRequired"), 3500);
+            }
+        }
     }, [isLoggedIn, floorPlanBase64, promptText, savePendingRender, generateRender]);
 
     const handleAuth = useCallback(() => { hasManuallyLoggedOut.current = false; setIsLoggedIn(true); generateRender(); }, [generateRender]);

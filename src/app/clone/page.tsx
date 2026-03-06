@@ -201,7 +201,13 @@ export default function ClonePage() {
     const handleCloneAndGenerate = useCallback(() => {
         if (!floorPlanBase64 || refs.length === 0) return;
         if (isLoggedIn) { generateRender(); }
-        else { savePendingClone(); setPhase("generating"); setTimeout(() => setPhase("authRequired"), 3500); }
+        else {
+            const saved = savePendingClone();
+            if (saved) {
+                setPhase("generating");
+                setTimeout(() => setPhase("authRequired"), 3500);
+            }
+        }
     }, [isLoggedIn, floorPlanBase64, refs, generateRender, savePendingClone]);
 
     const handleAuth = useCallback(() => { hasManuallyLoggedOut.current = false; setIsLoggedIn(true); generateRender(); }, [generateRender]);
