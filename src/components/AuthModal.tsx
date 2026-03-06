@@ -55,7 +55,7 @@ export function AuthModal({ open, onAuth, isCloneMode }: AuthModalProps) {
                 <Sparkles className="w-8 h-8 text-primary" />
               </div>
               <h2 className="font-display text-2xl font-bold text-foreground mb-2">
-                {isCloneMode ? "Your render is in progress" : "Your render is ready"}
+                {isCloneMode ? "Your render is in progress" : "Your render is almost ready"}
               </h2>
               <p className="text-muted-foreground text-sm mb-8">
                 {isCloneMode
