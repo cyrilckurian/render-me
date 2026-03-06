@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Download, MoreVertical, Trash2, Menu, Loader2, ThumbsUp, ThumbsDown, Share2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -24,7 +24,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Tables } from "@/integrations/supabase/types";
 
-export default function RenderPage() {
+function RenderPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -440,5 +440,17 @@ export default function RenderPage() {
             <AuthModal open={phase === "authRequired"} onAuth={handleAuth} isCloneMode={false} />
             <FeedbackModal open={feedbackModalOpen} onClose={() => setFeedbackModalOpen(false)} renderId={currentRenderId} />
         </div>
+    );
+}
+
+export default function RenderPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+        }>
+            <RenderPageContent />
+        </Suspense>
     );
 }
