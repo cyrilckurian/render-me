@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PENDING_CLONE_KEY } from "@/components/CloneStyleModal";
 import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
+import { getRedirectUrl } from "@/lib/auth";
 
 const MAX_REFS = 10;
 
@@ -215,8 +216,8 @@ export default function ClonePage() {
                     {!isLoggedIn && (
                         <button
                             onClick={() => {
-                                savePendingClone();
-                                supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/clone` } });
+                                if (floorPlanBase64) savePendingClone();
+                                supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: getRedirectUrl("/clone") } });
                             }}
                             className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                         >

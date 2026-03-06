@@ -23,6 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Tables } from "@/integrations/supabase/types";
+import { getRedirectUrl } from "@/lib/auth";
 
 function RenderPageContent() {
     const router = useRouter();
@@ -266,7 +267,7 @@ function RenderPageContent() {
                         <button
                             onClick={() => {
                                 if (floorPlanBase64 && promptText) savePendingRender(promptText);
-                                supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/render` } });
+                                supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: getRedirectUrl("/render") } });
                             }}
                             className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                         >

@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { getRedirectUrl } from "@/lib/auth";
 
 export default function Home() {
   const router = useRouter();
@@ -37,7 +38,7 @@ export default function Home() {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: getRedirectUrl("/"),
       }
     });
   };
