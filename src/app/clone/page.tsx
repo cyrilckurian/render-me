@@ -98,9 +98,10 @@ export default function ClonePage() {
                 const parsed = JSON.parse(raw) as { referenceImages: { base64: string; preview: string }[]; floorPlanBase64?: string; floorPlanPreview?: string };
                 sessionStorage.removeItem(PENDING_CLONE_KEY);
                 setRefs(parsed.referenceImages.map(r => ({ ...r, file: new File([], "ref.png") })));
-                if (parsed.floorPlanBase64) { setFloorPlanBase64(parsed.floorPlanBase64); setFloorPlanPreview(parsed.floorPlanPreview || null); }
-                setShouldAutoRender(true); setPhase("rendering");
-            } catch { sessionStorage.removeItem(PENDING_CLONE_KEY); }
+                if (parsed.floorPlanBase64) setFloorPlanBase64(parsed.floorPlanBase64);
+                if (parsed.floorPlanPreview) setFloorPlanPreview(parsed.floorPlanPreview);
+                setShouldAutoRender(true);
+            } catch (err) { console.error("Failed to restore pending clone:", err); sessionStorage.removeItem(PENDING_CLONE_KEY); }
         }
     }, []);
 
@@ -173,9 +174,10 @@ export default function ClonePage() {
 
     useEffect(() => {
         if (shouldAutoRender && isLoggedIn && floorPlanBase64 && refs.length > 0) {
-            setShouldAutoRender(false); generateRender(floorPlanBase64);
+            setShouldAutoRender(false);
+            generateRender();
         }
-    }, [shouldAutoRender, isLoggedIn, floorPlanBase64, refs, generateRender]);
+    }, [shouldAutoRender, isLoggedIn, floorPlanBase64, refs.length, generateRender]);
 
     const savePendingClone = useCallback((): boolean => {
         if (!floorPlanBase64 || refs.length === 0) return false;
