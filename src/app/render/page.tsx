@@ -39,7 +39,9 @@ function RenderPageContent() {
     const [pendingPdfFile, setPendingPdfFile] = useState<File | null>(null);
     const [savedCustomStyles, setSavedCustomStyles] = useState<RenderingStyle[]>([]);
     const [selectedStyle, setSelectedStyle] = useState<RenderingStyle | null>(null);
-    const [phase, setPhase] = useState<"workspace" | "generating" | "authRequired" | "rendering" | "results">("workspace");
+    const [phase, setPhase] = useState<"workspace" | "generating" | "authRequired" | "rendering" | "results">(
+        typeof window !== "undefined" && sessionStorage.getItem("pendingRender") ? "rendering" : "workspace"
+    );
     const [promptText, setPromptText] = useState("");
     const [renderedImageUrl, setRenderedImageUrl] = useState<string | null>(null);
     const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
@@ -83,7 +85,8 @@ function RenderPageContent() {
                 sessionStorage.removeItem(PENDING_RENDER_KEY);
                 const style = renderingStyles.find((s) => s.id === styleId) || null;
                 setFloorPlanBase64(base64); setFloorPlanPreview(preview); setPromptText(prompt);
-                setSelectedStyle(style); setShouldAutoRender(true); setPhase("rendering");
+                setSelectedStyle(style); setShouldAutoRender(true);
+                setPhase("rendering"); // Set phase immediately to show progress bar
                 const byteString = atob(base64.split(",")[1]);
                 const mimeString = base64.split(",")[0].split(":")[1].split(";")[0];
                 const ab = new ArrayBuffer(byteString.length); const ia = new Uint8Array(ab);

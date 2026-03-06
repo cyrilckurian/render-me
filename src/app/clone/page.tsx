@@ -67,7 +67,9 @@ export default function ClonePage() {
     const [floorPlanBase64, setFloorPlanBase64] = useState<string | null>(null);
     const [floorPlanIsPdf, setFloorPlanIsPdf] = useState(false);
     const [pendingPdfFile, setPendingPdfFile] = useState<File | null>(null);
-    const [phase, setPhase] = useState<"workspace" | "generating" | "authRequired" | "rendering" | "results">("workspace");
+    const [phase, setPhase] = useState<"workspace" | "generating" | "authRequired" | "rendering" | "results">(
+        typeof window !== "undefined" && sessionStorage.getItem(PENDING_CLONE_KEY) ? "rendering" : "workspace"
+    );
     const [renderedImageUrl, setRenderedImageUrl] = useState<string | null>(null);
     const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
     const [currentRenderId, setCurrentRenderId] = useState<string | null>(null);
@@ -101,6 +103,7 @@ export default function ClonePage() {
                 if (parsed.floorPlanBase64) setFloorPlanBase64(parsed.floorPlanBase64);
                 if (parsed.floorPlanPreview) setFloorPlanPreview(parsed.floorPlanPreview);
                 setShouldAutoRender(true);
+                setPhase("rendering"); // Set phase immediately to show progress bar
             } catch (err) { console.error("Failed to restore pending clone:", err); sessionStorage.removeItem(PENDING_CLONE_KEY); }
         }
     }, []);
