@@ -101,12 +101,11 @@ serve(async (req) => {
 
       // If the provided key is an API Key, use ?key=. If it's a bearer token, use header Authorization: Bearer. 
       // Based on usual GCP patterns, we pass it as a Bearer token if it was generated via OAuth, or key parameter if it's an API Key.
-      // We will supply both auth methods to cover Vertex Express API Key or standard OAuth approaches.
-      aiResponse = await fetch(`https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent`, {
+      // We will supply the API key via the URL parameter as is standard for Google Cloud API keys.
+      aiResponse = await fetch(`https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent?key=${VERTEX_API_KEY}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${VERTEX_API_KEY}`
         },
         body: commonBody,
       });
