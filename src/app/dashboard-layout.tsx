@@ -37,22 +37,20 @@ export default function DashboardLayout({
         router.push("/");
     }, [router]);
 
-    if (!isLoggedIn) {
-        return <>{children}</>;
-    }
-
     return (
-        <div className="min-h-screen bg-background flex flex-row w-full">
-            <RenderHistory
-                onSelectRender={handleSelectRender}
-                onLogout={handleLogout}
-                onViewGenerating={() => router.push("/render")}
-                onNewRender={() => router.push("/")}
-                isGenerating={isGenerating}
-                mobileOpen={mobileOpen}
-                onMobileClose={() => setMobileOpen(false)}
-            />
-            <div className="flex-1 flex flex-col min-w-0 md:ml-72">
+        <div className={isLoggedIn ? "min-h-screen bg-background flex flex-row w-full" : "min-h-screen bg-background flex flex-col w-full"}>
+            {isLoggedIn && (
+                <RenderHistory
+                    onSelectRender={handleSelectRender}
+                    onLogout={handleLogout}
+                    onViewGenerating={() => router.push("/render")}
+                    onNewRender={() => router.push("/")}
+                    isGenerating={isGenerating}
+                    mobileOpen={mobileOpen}
+                    onMobileClose={() => setMobileOpen(false)}
+                />
+            )}
+            <div className={isLoggedIn ? "flex-1 flex flex-col min-w-0 md:ml-72" : "flex-1 flex flex-col min-w-0"}>
                 {children}
             </div>
         </div>
