@@ -96,7 +96,7 @@ serve(async (req) => {
       // You must provide your Google Cloud Project ID and Vertex AI Location corresponding to this API route.
       const VERTEX_PROJECT_ID = Deno.env.get("VERTEX_PROJECT_ID") || "YOUR_PROJECT_ID";
       const VERTEX_LOCATION = Deno.env.get("VERTEX_LOCATION") || "us-central1";
-      const VERTEX_MODEL = "gemini-1.5-pro"; // Update with the required Vertex AI model containing image output support
+      const VERTEX_MODEL = "gemini-3-pro-image-preview"; // Update with the required Vertex AI model containing image output support
       const VERTEX_API_KEY = "AQ.Ab8RN6LGXnNxDw6RDfzc5kHi1-YqKGuKezB-9eVrCa6JLCFiyA";
 
       // If the provided key is an API Key, use ?key=. If it's a bearer token, use header Authorization: Bearer. 
