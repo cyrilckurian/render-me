@@ -175,9 +175,17 @@ export default function ClonePage() {
     useEffect(() => {
         if (shouldAutoRender && isLoggedIn && floorPlanBase64 && refs.length > 0) {
             setShouldAutoRender(false);
+            console.log("[Clone] Auto-rendering started...");
             generateRender();
         }
     }, [shouldAutoRender, isLoggedIn, floorPlanBase64, refs.length, generateRender]);
+
+    useEffect(() => {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        if (supabaseUrl === "https://placeholder.supabase.co" && typeof window !== "undefined") {
+            toast.error("Supabase URL is not configured. Please check your Vercel environment variables.");
+        }
+    }, [isLoggedIn]);
 
     const savePendingClone = useCallback((): boolean => {
         if (!floorPlanBase64 || refs.length === 0) return false;

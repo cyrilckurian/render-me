@@ -216,9 +216,17 @@ function RenderPageContent() {
         const isCustomStyle = selectedStyle && !selectedStyle.prompt;
         if (shouldAutoRender && isLoggedIn && floorPlanBase64 && (promptText || isCustomStyle)) {
             setShouldAutoRender(false);
+            console.log("[Render] Auto-rendering started...");
             generateRender(floorPlanBase64, promptText);
         }
     }, [shouldAutoRender, isLoggedIn, floorPlanBase64, promptText, selectedStyle, generateRender]);
+
+    useEffect(() => {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        if (supabaseUrl === "https://placeholder.supabase.co" && typeof window !== "undefined") {
+            toast.error("Supabase URL is not configured. Please check your Vercel environment variables.");
+        }
+    }, [isLoggedIn]);
 
     const savePendingRender = useCallback((text: string): boolean => {
         if (!floorPlanBase64 || !floorPlanFile) return false;

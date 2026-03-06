@@ -3,26 +3,20 @@
  * Uses NEXT_PUBLIC_SITE_URL if defined (for production), otherwise falls back to window.location.origin.
  */
 export function getRedirectUrl(path: string = "") {
-    // Ensure path starts with /
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
 
-    // 1. Check for explicit environment variable (best for production)
+    // 1. Check for explicit environment variable
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-    if (siteUrl) {
-        // Remove trailing slash if present
+    if (siteUrl && !siteUrl.includes("localhost")) {
         const baseUrl = siteUrl.endsWith("/") ? siteUrl.slice(0, -1) : siteUrl;
-        const finalUrl = `${baseUrl}${normalizedPath}`;
-        console.log(`[Auth] Using NEXT_PUBLIC_SITE_URL: ${finalUrl}`);
-        return finalUrl;
+        return `${baseUrl}${normalizedPath}`;
     }
 
-    // 2. Fallback to window.location (best for local dev/preview)
+    // 2. Fallback to current window location
     if (typeof window !== "undefined") {
-        const finalUrl = `${window.location.origin}${normalizedPath}`;
-        console.log(`[Auth] Fallback to window.location.origin: ${finalUrl}`);
-        return finalUrl;
+        // Double check: if we are on a .vercel.app or custom domain, window.location.origin will be correct
+        return `${window.location.origin}${normalizedPath}`;
     }
 
-    // 3. Last resort (should ideally not be hit for client-side auth)
     return normalizedPath;
 }
