@@ -97,7 +97,7 @@ serve(async (req) => {
       const VERTEX_PROJECT_ID = Deno.env.get("VERTEX_PROJECT_ID") || "YOUR_PROJECT_ID";
       const VERTEX_LOCATION = Deno.env.get("VERTEX_LOCATION") || "us-central1";
       const VERTEX_MODEL = "gemini-3-pro-image-preview"; // Update with the required Vertex AI model containing image output support
-      const VERTEX_API_KEY = "AQ.Ab8RN6LGXnNxDw6RDfzc5kHi1-YqKGuKezB-9eVrCa6JLCFiyA";
+      const VERTEX_API_KEY = Deno.env.get("VERTEX_API_KEY");
 
       // If the provided key is an API Key, use ?key=. If it's a bearer token, use header Authorization: Bearer. 
       // Based on usual GCP patterns, we pass it as a Bearer token if it was generated via OAuth, or key parameter if it's an API Key.
