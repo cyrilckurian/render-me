@@ -81,18 +81,32 @@ function RenderPageContent() {
         const pending = sessionStorage.getItem(PENDING_RENDER_KEY);
         if (pending) {
             try {
-                const { base64, preview, prompt, styleId, fileName } = JSON.parse(pending);
+                const parsed = JSON.parse(pending);
+                const { base64, preview, prompt, styleId, fileName } = parsed;
                 sessionStorage.removeItem(PENDING_RENDER_KEY);
+
+                if (!base64 || !prompt) throw new Error("Missing required render data");
+
                 const style = renderingStyles.find((s) => s.id === styleId) || null;
                 setFloorPlanBase64(base64); setFloorPlanPreview(preview); setPromptText(prompt);
                 setSelectedStyle(style); setShouldAutoRender(true);
                 setPhase("rendering"); // Set phase immediately to show progress bar
-                const byteString = atob(base64.split(",")[1]);
-                const mimeString = base64.split(",")[0].split(":")[1].split(";")[0];
-                const ab = new ArrayBuffer(byteString.length); const ia = new Uint8Array(ab);
-                for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-                setFloorPlanFile(new File([ab], fileName || "floor-plan.png", { type: mimeString }));
-            } catch { sessionStorage.removeItem(PENDING_RENDER_KEY); }
+
+                try {
+                    const byteString = atob(base64.split(",")[1]);
+                    const mimeString = base64.split(",")[0].split(":")[1].split(";")[0];
+                    const ab = new ArrayBuffer(byteString.length); const ia = new Uint8Array(ab);
+                    for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+                    setFloorPlanFile(new File([ab], fileName || "floor-plan.png", { type: mimeString }));
+                } catch (fileErr) {
+                    console.error("Failed to reconstruct File object, but proceeding with base64:", fileErr);
+                }
+            } catch (err: any) {
+                console.error("Failed to restore pending render:", err);
+                toast.error("Failed to resume render: " + (err.message || "Unknown error"));
+                sessionStorage.removeItem(PENDING_RENDER_KEY);
+                setPhase("workspace");
+            }
         }
     }, []);
 

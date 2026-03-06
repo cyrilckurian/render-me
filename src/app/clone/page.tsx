@@ -99,12 +99,22 @@ export default function ClonePage() {
             try {
                 const parsed = JSON.parse(raw) as { referenceImages: { base64: string; preview: string }[]; floorPlanBase64?: string; floorPlanPreview?: string };
                 sessionStorage.removeItem(PENDING_CLONE_KEY);
+
+                if (!parsed.floorPlanBase64 || !parsed.referenceImages || parsed.referenceImages.length === 0) {
+                    throw new Error("Missing required clone data");
+                }
+
                 setRefs(parsed.referenceImages.map(r => ({ ...r, file: new File([], "ref.png") })));
                 if (parsed.floorPlanBase64) setFloorPlanBase64(parsed.floorPlanBase64);
                 if (parsed.floorPlanPreview) setFloorPlanPreview(parsed.floorPlanPreview);
                 setShouldAutoRender(true);
                 setPhase("rendering"); // Set phase immediately to show progress bar
-            } catch (err) { console.error("Failed to restore pending clone:", err); sessionStorage.removeItem(PENDING_CLONE_KEY); }
+            } catch (err: any) {
+                console.error("Failed to restore pending clone:", err);
+                toast.error("Failed to resume clone: " + (err.message || "Unknown error"));
+                sessionStorage.removeItem(PENDING_CLONE_KEY);
+                setPhase("workspace");
+            }
         }
     }, []);
 
