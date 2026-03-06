@@ -68,41 +68,67 @@ serve(async (req) => {
     messageContent.push({ type: "image_url", image_url: { url: floorPlanBase64 } });
 
 
-    // Call Gemini API directly (Google AI Studio)
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
-
-    const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: messageContent.map(part => {
-              if (part.type === "text") return { text: part.text };
-              if (part.type === "image_url") {
-                const base64Data = part.image_url.url.split(",")[1];
-                const mimeType = part.image_url.url.split(",")[0].split(":")[1].split(";")[0];
-                return { inline_data: { mime_type: mimeType, data: base64Data } };
-              }
-              return {};
-            }),
-          },
-        ],
-        generationConfig: {
-          responseModalities: ["IMAGE", "TEXT"],
+    const commonBody = JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: messageContent.map(part => {
+            if (part.type === "text") return { text: part.text };
+            if (part.type === "image_url") {
+              const base64Data = part.image_url.url.split(",")[1];
+              const mimeType = part.image_url.url.split(",")[0].split(":")[1].split(";")[0];
+              return { inline_data: { mime_type: mimeType, data: base64Data } };
+            }
+            return {};
+          }),
         },
-      }),
+      ],
+      generationConfig: {
+        responseModalities: ["IMAGE", "TEXT"],
+      },
     });
+
+    let aiResponse;
+    const useVertexAI = true;
+
+    if (useVertexAI) {
+      // Vertex AI Call
+      // You must provide your Google Cloud Project ID and Vertex AI Location corresponding to this API route.
+      const VERTEX_PROJECT_ID = Deno.env.get("VERTEX_PROJECT_ID") || "YOUR_PROJECT_ID";
+      const VERTEX_LOCATION = Deno.env.get("VERTEX_LOCATION") || "us-central1";
+      const VERTEX_MODEL = "gemini-1.5-pro"; // Update with the required Vertex AI model containing image output support
+      const VERTEX_API_KEY = "AQ.Ab8RN6LGXnNxDw6RDfzc5kHi1-YqKGuKezB-9eVrCa6JLCFiyA";
+
+      // If the provided key is an API Key, use ?key=. If it's a bearer token, use header Authorization: Bearer. 
+      // Based on usual GCP patterns, we pass it as a Bearer token if it was generated via OAuth, or key parameter if it's an API Key.
+      // We will supply both auth methods to cover Vertex Express API Key or standard OAuth approaches.
+      aiResponse = await fetch(`https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${VERTEX_API_KEY}`
+        },
+        body: commonBody,
+      });
+    } else {
+      // Original Call (Google AI Studio)
+      const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+      if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
+
+      aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: commonBody,
+      });
+    }
 
     if (!aiResponse.ok) {
       const status = aiResponse.status;
       const errorText = await aiResponse.text();
-      console.error("Gemini API error:", status, errorText);
-      return new Response(JSON.stringify({ error: `Gemini API error (${status}): ${errorText}` }), {
+      console.error("AI API error:", status, errorText);
+      return new Response(JSON.stringify({ error: `AI API error (${status}): ${errorText}` }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
