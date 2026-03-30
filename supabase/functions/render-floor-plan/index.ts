@@ -54,7 +54,11 @@ serve(async (req) => {
       // Opening instruction
       messageContent.push({
         type: "text",
-        text: `You are an expert architectural renderer. Your job is to extract a complete visual style fingerprint from the STYLE REFERENCE image(s) below, then apply that style to a different floor plan.
+        text: `You are an expert architectural renderer. You will generate exactly ONE output image: the TARGET FLOOR PLAN (shown at the end) redrawn in the visual style of the STYLE REFERENCE image(s).
+
+CRITICAL OUTPUT RULE: Do NOT reproduce, copy, or output the STYLE REFERENCE image. The output image must show the TARGET FLOOR PLAN's rooms and layout — not the reference's layout. The reference is a style guide only.
+
+Your job is to extract a complete visual style fingerprint from the STYLE REFERENCE image(s) below, then apply that style to a different floor plan.
 
 ## STEP 1 — Deep Style Extraction (from STYLE REFERENCE image)
 Analyze the reference image exhaustively. Extract every visual detail:
@@ -131,10 +135,14 @@ Extract the complete visual style from this image using the framework above. Thi
       // Label the floor plan explicitly
       messageContent.push({
         type: "text",
-        text: `=== TARGET FLOOR PLAN — RENDER THIS ===
-This is the floor plan you must render. Its layout is fixed and must not change.
-Apply every stylistic element you extracted from the STYLE REFERENCE(S) above to THIS floor plan's geometry.
-Output: a top-down 2D floor plan matching this exact layout, rendered in the cloned style.`,
+        text: `=== TARGET FLOOR PLAN — THIS IS WHAT YOU MUST DRAW ===
+The image below is the floor plan you must render. Ignore its current visual style — you are replacing it with the style from the STYLE REFERENCE above.
+
+OUTPUT REQUIREMENTS:
+- Generate a NEW image showing THIS floor plan's exact room layout, walls, doors, windows, and labels
+- Apply the colors, textures, line weights, shading, furniture style, and materials from the STYLE REFERENCE
+- The output must NOT look like the STYLE REFERENCE — it must look like THIS floor plan drawn in that style
+- Every room in the output must correspond to a room in THIS floor plan image below`,
       });
     } else {
       messageContent.push({
@@ -225,6 +233,21 @@ Output: a top-down 2D floor plan matching this exact layout, rendered in the clo
       const mimeType = dataObj.mime_type || dataObj.mimeType;
       const base64Data = dataObj.data;
       if (mimeType && base64Data) {
+        // Detect if model echoed back a reference image instead of generating a new one
+        if (isCloneStyle && referenceImages.length > 0) {
+          const outputPrefix = base64Data.slice(0, 100);
+          const isEcho = referenceImages.some((ref: string) => {
+            const refBase64 = ref.split(",")[1] || ref;
+            return refBase64.slice(0, 100) === outputPrefix;
+          });
+          if (isEcho) {
+            console.error("Model echoed reference image — aborting");
+            return new Response(JSON.stringify({ error: "The AI returned the reference image instead of rendering your floor plan. Please try again." }), {
+              status: 500,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        }
         generatedImage = `data:${mimeType};base64,${base64Data}`;
       }
     }
