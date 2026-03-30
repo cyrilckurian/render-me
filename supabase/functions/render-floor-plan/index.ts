@@ -48,20 +48,99 @@ serve(async (req) => {
     const isCloneStyle = prompt.startsWith("__CLONE_STYLE__") && Array.isArray(referenceImages) && referenceImages.length > 0;
 
     // Build message content
-    const messageContent: any[] = [
-      {
-        type: "text",
-        text: isCloneStyle
-          ? `You are an expert architectural renderer. The user has provided ${referenceImages.length} reference image(s) that define a specific visual style. Analyze these reference images carefully to understand the artistic style, color palette, line weight, rendering technique, and overall aesthetic. Then apply EXACTLY that style to the floor plan image provided. Maintain the spatial layout and proportions of the floor plan while transforming its appearance to match the style of the references. Produce a high-quality architectural visualization.`
-          : `You are an expert architectural renderer. Given this floor plan image, generate a beautifully rendered version in the following style:\n\n${prompt}\n\nCreate a high-quality architectural visualization based on the floor plan layout. Maintain the spatial arrangement and proportions of the original floor plan while applying the requested artistic style. Important: if the floor plan contains any staircases, render them so that steps ascend in only one direction — one end of the staircase faces the lower floor and the other end faces the upper floor. Never render steps going in both directions simultaneously.`,
-      },
-    ];
+    const messageContent: any[] = [];
 
-    // Add reference images for clone mode
     if (isCloneStyle) {
-      for (const refBase64 of referenceImages) {
+      // Opening instruction
+      messageContent.push({
+        type: "text",
+        text: `You are an expert architectural renderer. Your job is to extract a complete visual style fingerprint from the STYLE REFERENCE image(s) below, then apply that style to a different floor plan.
+
+## STEP 1 — Deep Style Extraction (from STYLE REFERENCE image)
+Analyze the reference image exhaustively. Extract every visual detail:
+
+**Medium & Technique**
+- Is it hand-drawn, watercolor, marker, colored pencil, CAD vector, or digital painting?
+- Are lines hand-stroked with natural variation, or crisp and mechanical?
+- Is there visible paper texture, grain, or wash bleed?
+
+**Line & Wall Treatment**
+- Wall thickness and how walls terminate (capped, open, bold outline)
+- Line weight hierarchy (outer walls vs inner walls vs furniture)
+- Are walls filled solid black, hatched, double-lined, or left hollow?
+
+**Color Palette — extract exact colors for each element**
+- Floor/room fill colors per room type (bedroom, bathroom, kitchen, living, etc.)
+- Wall color, outline color, stroke color
+- Furniture fill and outline colors
+- Background/paper color
+- Vegetation, outdoor areas, circulation paths
+- Any gradient, wash, or transparency effects
+
+**Flooring & Material Textures**
+- Wood plank direction, grain style, spacing — which rooms have it?
+- Tile patterns (size, grid vs diagonal, grout lines) — which rooms?
+- Hatching patterns for bathrooms, stairs, or structural elements
+- Concrete, stone, or carpet textures if present
+
+**Furniture & Fixture Style**
+- Level of detail (simple silhouettes vs highly detailed icons)
+- Shading and shadow on furniture (drop shadow, cast shadow, flat)
+- Furniture outline weight vs fill
+- How beds, sofas, tables, kitchen counters, bathroom fixtures are drawn
+
+**Shadow & Depth**
+- Does the render use drop shadows under walls? Angle and softness?
+- Interior ambient shading inside rooms?
+- Any 3D-like elevation or isometric effects?
+
+**Vegetation & Surroundings**
+- Tree/shrub style (blob circles, detailed foliage, watercolor splashes)
+- Ground cover, pathways, exterior textures
+
+**Typography & Annotations**
+- Font style for room labels (serif, sans-serif, handwritten, all-caps)
+- Dimension line style (if present)
+- Label placement and sizing
+
+**Overall Mood**
+- Professional/technical, hand-crafted/artsy, minimalist, rich/detailed?
+
+---
+
+## STEP 2 — Render the TARGET FLOOR PLAN in that extracted style
+
+ABSOLUTE RULES — violation means the output is wrong:
+1. The TARGET FLOOR PLAN's spatial layout is FIXED. Every wall, room boundary, door, window, and room label must remain exactly where it is.
+2. Do NOT copy rooms, shapes, or building geometry from the reference image.
+3. ONLY change the visual appearance — apply the extracted colors, textures, line styles, shadows, furniture drawing style, and materials to the TARGET FLOOR PLAN's own layout.
+4. Match the reference style as faithfully as possible — if bedrooms had warm wood flooring in the reference, apply the same to bedrooms in the target. If bathrooms had tile hatching, apply that too.
+5. If there are staircases, render steps ascending in one direction only.`,
+      });
+
+      // Add each reference image with a clear label
+      referenceImages.forEach((refBase64: string, i: number) => {
+        messageContent.push({
+          type: "text",
+          text: `=== STYLE REFERENCE IMAGE ${i + 1} of ${referenceImages.length} ===
+Extract the complete visual style from this image using the framework above. This image is a STYLE SOURCE ONLY — do not use its floor plan layout or room arrangement in your output.`,
+        });
         messageContent.push({ type: "image_url", image_url: { url: refBase64 } });
-      }
+      });
+
+      // Label the floor plan explicitly
+      messageContent.push({
+        type: "text",
+        text: `=== TARGET FLOOR PLAN — RENDER THIS ===
+This is the floor plan you must render. Its layout is fixed and must not change.
+Apply every stylistic element you extracted from the STYLE REFERENCE(S) above to THIS floor plan's geometry.
+Output: a top-down 2D floor plan matching this exact layout, rendered in the cloned style.`,
+      });
+    } else {
+      messageContent.push({
+        type: "text",
+        text: `You are an expert architectural renderer. Given this floor plan image, generate a beautifully rendered version in the following style:\n\n${prompt}\n\nCreate a high-quality architectural visualization based on the floor plan layout. Maintain the spatial arrangement and proportions of the original floor plan while applying the requested artistic style. Important: if the floor plan contains any staircases, render them so that steps ascend in only one direction — one end of the staircase faces the lower floor and the other end faces the upper floor. Never render steps going in both directions simultaneously.`,
+      });
     }
 
     // Add the floor plan last
