@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
-import { Upload, X, Image as ImageIcon, FileText } from "lucide-react";
+import { Upload, X, Image as ImageIcon, FileText, Camera } from "lucide-react";
 import { motion } from "framer-motion";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface FloorPlanUploadProps {
   preview: string | null;
@@ -13,6 +14,7 @@ interface FloorPlanUploadProps {
 export function FloorPlanUpload({ preview, isPdf, fileName, onUpload, onRemove }: FloorPlanUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const isMobile = useIsMobile();
 
   const isAccepted = (file: File) =>
     file.type.startsWith("image/") || file.type === "application/pdf";
@@ -84,19 +86,26 @@ export function FloorPlanUpload({ preview, isPdf, fileName, onUpload, onRemove }
         ref={inputRef}
         type="file"
         accept="image/*,application/pdf"
+        capture={isMobile ? "environment" : undefined}
         className="hidden"
         onChange={(e) => handleFiles(e.target.files)}
       />
       <div className="flex flex-col items-center gap-3">
         <div className="w-14 h-14 rounded-full bg-secondary flex items-center justify-center">
-          <Upload className="w-6 h-6 text-muted-foreground" />
+          {isMobile ? (
+            <Camera className="w-6 h-6 text-muted-foreground" />
+          ) : (
+            <Upload className="w-6 h-6 text-muted-foreground" />
+          )}
         </div>
         <div>
           <p className="font-display font-semibold text-foreground">
-            Upload your floor plan
+            {isMobile ? "Capture or upload floor plan" : "Upload your floor plan"}
           </p>
           <p className="text-sm text-muted-foreground mt-1">
-            Drag & drop or click to browse · PNG, JPG, WEBP, PDF
+            {isMobile
+              ? "Tap to take a photo or choose from gallery"
+              : "Drag & drop or click to browse \u00b7 PNG, JPG, WEBP, PDF"}
           </p>
         </div>
       </div>

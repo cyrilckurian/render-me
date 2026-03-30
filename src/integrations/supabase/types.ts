@@ -14,6 +14,78 @@ export type Database = {
   }
   public: {
     Tables: {
+      composer_sessions: {
+        Row: {
+          base_sketch_path: string | null
+          created_at: string
+          id: string
+          regions_json: Json
+          title: string
+          updated_at: string
+          user_id: string
+          variations_json: Json
+        }
+        Insert: {
+          base_sketch_path?: string | null
+          created_at?: string
+          id?: string
+          regions_json?: Json
+          title?: string
+          updated_at?: string
+          user_id: string
+          variations_json?: Json
+        }
+        Update: {
+          base_sketch_path?: string | null
+          created_at?: string
+          id?: string
+          regions_json?: Json
+          title?: string
+          updated_at?: string
+          user_id?: string
+          variations_json?: Json
+        }
+        Relationships: []
+      }
+      compositions: {
+        Row: {
+          created_at: string
+          id: string
+          image_source: string
+          original_file_name: string
+          original_image_path: string
+          regions_json: Json
+          result_image_path: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_source?: string
+          original_file_name?: string
+          original_image_path: string
+          regions_json?: Json
+          result_image_path?: string | null
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_source?: string
+          original_file_name?: string
+          original_image_path?: string
+          regions_json?: Json
+          result_image_path?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       custom_styles: {
         Row: {
           created_at: string
@@ -131,6 +203,215 @@ export type Database = {
         }
         Relationships: []
       }
+      review_comments: {
+        Row: {
+          annotation_rect: Json | null
+          comment_text: string | null
+          created_at: string
+          id: string
+          link_id: string
+          page_id: string
+          project_id: string
+          reviewer_name: string
+          voice_path: string | null
+        }
+        Insert: {
+          annotation_rect?: Json | null
+          comment_text?: string | null
+          created_at?: string
+          id?: string
+          link_id: string
+          page_id: string
+          project_id: string
+          reviewer_name: string
+          voice_path?: string | null
+        }
+        Update: {
+          annotation_rect?: Json | null
+          comment_text?: string | null
+          created_at?: string
+          id?: string
+          link_id?: string
+          page_id?: string
+          project_id?: string
+          reviewer_name?: string
+          voice_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_comments_link_id_fkey"
+            columns: ["link_id"]
+            isOneToOne: false
+            referencedRelation: "review_links"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_comments_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "review_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_comments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "review_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_files: {
+        Row: {
+          created_at: string
+          drive_file_id: string | null
+          file_name: string
+          file_type: string
+          id: string
+          page_count: number
+          project_id: string
+          sort_order: number
+          source: string
+          storage_path: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          drive_file_id?: string | null
+          file_name: string
+          file_type: string
+          id?: string
+          page_count?: number
+          project_id: string
+          sort_order?: number
+          source?: string
+          storage_path: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          drive_file_id?: string | null
+          file_name?: string
+          file_type?: string
+          id?: string
+          page_count?: number
+          project_id?: string
+          sort_order?: number
+          source?: string
+          storage_path?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_files_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "review_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_links: {
+        Row: {
+          created_at: string
+          id: string
+          project_id: string
+          reviewer_name: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          project_id: string
+          reviewer_name: string
+          token?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          project_id?: string
+          reviewer_name?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_links_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "review_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_pages: {
+        Row: {
+          created_at: string
+          file_id: string
+          id: string
+          image_path: string
+          page_number: number
+          project_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_id: string
+          id?: string
+          image_path: string
+          page_number?: number
+          project_id: string
+        }
+        Update: {
+          created_at?: string
+          file_id?: string
+          id?: string
+          image_path?: string
+          page_number?: number
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_pages_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "review_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_pages_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "review_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_projects: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       style_requests: {
         Row: {
           created_at: string
@@ -163,7 +444,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      review_link_token_matches: {
+        Args: { p_link_id: string; p_token: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

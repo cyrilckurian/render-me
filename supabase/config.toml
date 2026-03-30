@@ -2,3 +2,6 @@ project_id = "miztfzphkkvabguflkkz"
 
 [functions.render-floor-plan]
 verify_jwt = false
+
+[functions.edit-render]
+verify_jwt = false

@@ -1,0 +1,1 @@
+ALTER TABLE public.compositions ADD COLUMN IF NOT EXISTS image_source text NOT NULL DEFAULT 'uploaded';
