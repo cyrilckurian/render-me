@@ -167,46 +167,46 @@ Output: a top-down 2D floor plan matching this exact layout, rendered in the clo
       },
     });
 
-    let aiResponse;
     const useVertexAI = true;
 
+    const VERTEX_PROJECT_ID = Deno.env.get("VERTEX_PROJECT_ID") || "YOUR_PROJECT_ID";
+    const VERTEX_LOCATION = Deno.env.get("VERTEX_LOCATION") || "us-central1";
+    const VERTEX_MODEL = "gemini-3-pro-image-preview";
+    const VERTEX_API_KEY = Deno.env.get("VERTEX_API_KEY");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+
+    const apiUrl = useVertexAI
+      ? `https://aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent`
+      : `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${GEMINI_API_KEY}`;
+
+    const apiHeaders: Record<string, string> = { "Content-Type": "application/json" };
     if (useVertexAI) {
-      // Vertex AI Call
-      // You must provide your Google Cloud Project ID and Vertex AI Location corresponding to this API route.
-      const VERTEX_PROJECT_ID = Deno.env.get("VERTEX_PROJECT_ID") || "YOUR_PROJECT_ID";
-      const VERTEX_LOCATION = Deno.env.get("VERTEX_LOCATION") || "us-central1";
-      const VERTEX_MODEL = "gemini-3-pro-image-preview"; // Update with the required Vertex AI model containing image output support
-      const VERTEX_API_KEY = Deno.env.get("VERTEX_API_KEY");
+      apiHeaders["x-goog-api-key"] = VERTEX_API_KEY || "";
+    }
 
-      // Uses the Vertex Express endpoint (aiplatform.googleapis.com without region prefix)
-      // and the x-goog-api-key header which is required for AQ. prefixed API keys.
-      aiResponse = await fetch(`https://aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": VERTEX_API_KEY || "",
-        },
-        body: commonBody,
-      });
-    } else {
-      // Original Call (Google AI Studio)
-      const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-      if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
+    // Retry with exponential backoff on 429 (quota exhausted)
+    let aiResponse!: Response;
+    const maxRetries = 4;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      aiResponse = await fetch(apiUrl, { method: "POST", headers: apiHeaders, body: commonBody });
 
-      aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${GEMINI_API_KEY}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: commonBody,
-      });
+      if (aiResponse.status !== 429) break;
+
+      if (attempt < maxRetries) {
+        const delay = Math.min(2000 * Math.pow(2, attempt), 30000); // 2s, 4s, 8s, 16s (cap 30s)
+        console.warn(`429 rate limit hit, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
     }
 
     if (!aiResponse.ok) {
       const status = aiResponse.status;
       const errorText = await aiResponse.text();
       console.error("AI API error:", status, errorText);
-      return new Response(JSON.stringify({ error: `AI API error (${status}): ${errorText}` }), {
+      const userMessage = status === 429
+        ? "The AI service is currently busy. Please try again in a moment."
+        : `AI API error (${status}): ${errorText}`;
+      return new Response(JSON.stringify({ error: userMessage }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
