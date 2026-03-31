@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Download, ImagePlus, X, Zap, AlertTriangle, CheckCircle2, Menu } from "lucide-react";
+import { ArrowLeft, Download, ImagePlus, X, CheckCircle2, Menu } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FloorPlanUpload } from "@/components/FloorPlanUpload";
 import { PdfPagePicker } from "@/components/PdfPagePicker";
@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
 import { getRedirectUrl } from "@/lib/auth";
 
-const MAX_REFS = 10;
+const MAX_REFS = 1;
 
 async function fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -30,20 +30,16 @@ async function fileToBase64(file: File): Promise<string> {
 
 function QualityMeter({ count }: { count: number }) {
     const pct = Math.round((count / MAX_REFS) * 100);
-    const level = count === 0 ? null : count <= 2 ? "low" : count <= 5 ? "medium" : count <= 7 ? "good" : "excellent";
-    const config = {
-        low: { label: "Low accuracy", color: "bg-destructive", icon: AlertTriangle, tip: "Add more references for better results." },
-        medium: { label: "Medium accuracy", color: "bg-amber-500", icon: AlertTriangle, tip: "Good start! More images will significantly improve style matching." },
-        good: { label: "Good accuracy", color: "bg-primary", icon: Zap, tip: "Great! A few more images could push this to excellent accuracy." },
-        excellent: { label: "Excellent accuracy", color: "bg-emerald-500", icon: CheckCircle2, tip: "Perfect! The AI has plenty of references to nail your style." },
-    } as const;
-    if (!level) return null;
-    const { label, color, icon: Icon, tip } = config[level];
+    if (count === 0) return null;
+    const label = "Style reference ready";
+    const color = "bg-emerald-500";
+    const Icon = CheckCircle2;
+    const tip = "The AI will extract the full visual style from this image and apply it to your floor plan.";
     return (
         <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="space-y-1.5">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                    <Icon className={`w-3.5 h-3.5 ${level === "low" || level === "medium" ? "text-amber-500" : level === "excellent" ? "text-emerald-500" : "text-primary"}`} />
+                    <Icon className="w-3.5 h-3.5 text-emerald-500" />
                     <span className="text-xs font-semibold text-foreground">{label}</span>
                 </div>
                 <span className="text-xs text-muted-foreground">{count}/{MAX_REFS} images</span>
