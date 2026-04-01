@@ -105,3 +105,9 @@ body {
   scrollbar-width: none;
 }
 
+@layer base {
+  button, [role="button"], a, label[for], input[type="file"], select {
+    cursor: pointer;
+  }
+}
+
