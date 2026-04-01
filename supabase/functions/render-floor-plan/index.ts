@@ -47,165 +47,125 @@ serve(async (req) => {
 
     const isCloneStyle = prompt.startsWith("__CLONE_STYLE__") && Array.isArray(referenceImages) && referenceImages.length > 0;
 
-    // Build message content
-    const messageContent: any[] = [];
-
-    if (isCloneStyle) {
-      // Opening instruction
-      messageContent.push({
-        type: "text",
-        text: `You are an expert architectural renderer. You will generate exactly ONE output image: the TARGET FLOOR PLAN (shown at the end) redrawn in the visual style of the STYLE REFERENCE image(s).
-
-CRITICAL OUTPUT RULE: Do NOT reproduce, copy, or output the STYLE REFERENCE image. The output image must show the TARGET FLOOR PLAN's rooms and layout — not the reference's layout. The reference is a style guide only.
-
-Your job is to extract a complete visual style fingerprint from the STYLE REFERENCE image(s) below, then apply that style to a different floor plan.
-
-## STEP 1 — Deep Style Extraction (from STYLE REFERENCE image)
-Analyze the reference image exhaustively. Extract every visual detail:
-
-**Medium & Technique**
-- Is it hand-drawn, watercolor, marker, colored pencil, CAD vector, or digital painting?
-- Are lines hand-stroked with natural variation, or crisp and mechanical?
-- Is there visible paper texture, grain, or wash bleed?
-
-**Line & Wall Treatment**
-- Wall thickness and how walls terminate (capped, open, bold outline)
-- Line weight hierarchy (outer walls vs inner walls vs furniture)
-- Are walls filled solid black, hatched, double-lined, or left hollow?
-
-**Color Palette — extract exact colors for each element**
-- Floor/room fill colors per room type (bedroom, bathroom, kitchen, living, etc.)
-- Wall color, outline color, stroke color
-- Furniture fill and outline colors
-- Background/paper color
-- Vegetation, outdoor areas, circulation paths
-- Any gradient, wash, or transparency effects
-
-**Flooring & Material Textures**
-- Wood plank direction, grain style, spacing — which rooms have it?
-- Tile patterns (size, grid vs diagonal, grout lines) — which rooms?
-- Hatching patterns for bathrooms, stairs, or structural elements
-- Concrete, stone, or carpet textures if present
-
-**Furniture & Fixture Style**
-- Level of detail (simple silhouettes vs highly detailed icons)
-- Shading and shadow on furniture (drop shadow, cast shadow, flat)
-- Furniture outline weight vs fill
-- How beds, sofas, tables, kitchen counters, bathroom fixtures are drawn
-
-**Shadow & Depth**
-- Does the render use drop shadows under walls? Angle and softness?
-- Interior ambient shading inside rooms?
-- Any 3D-like elevation or isometric effects?
-
-**Vegetation & Surroundings**
-- Tree/shrub style (blob circles, detailed foliage, watercolor splashes)
-- Ground cover, pathways, exterior textures
-
-**Typography & Annotations**
-- Font style for room labels (serif, sans-serif, handwritten, all-caps)
-- Dimension line style (if present)
-- Label placement and sizing
-
-**Overall Mood**
-- Professional/technical, hand-crafted/artsy, minimalist, rich/detailed?
-
----
-
-## STEP 2 — Render the TARGET FLOOR PLAN in that extracted style
-
-ABSOLUTE RULES — violation means the output is wrong:
-1. The TARGET FLOOR PLAN's spatial layout is FIXED. Every wall, room boundary, door, window, and room label must remain exactly where it is.
-2. Do NOT copy rooms, shapes, or building geometry from the reference image.
-3. ONLY change the visual appearance — apply the extracted colors, textures, line styles, shadows, furniture drawing style, and materials to the TARGET FLOOR PLAN's own layout.
-4. Match the reference style as faithfully as possible — if bedrooms had warm wood flooring in the reference, apply the same to bedrooms in the target. If bathrooms had tile hatching, apply that too.
-5. If there are staircases, render steps ascending in one direction only.`,
-      });
-
-      // Add each reference image with a clear label
-      referenceImages.forEach((refBase64: string, i: number) => {
-        messageContent.push({
-          type: "text",
-          text: `=== STYLE REFERENCE IMAGE ${i + 1} of ${referenceImages.length} ===
-Extract the complete visual style from this image using the framework above. This image is a STYLE SOURCE ONLY — do not use its floor plan layout or room arrangement in your output.`,
-        });
-        messageContent.push({ type: "image_url", image_url: { url: refBase64 } });
-      });
-
-      // Label the floor plan explicitly
-      messageContent.push({
-        type: "text",
-        text: `=== TARGET FLOOR PLAN — THIS IS WHAT YOU MUST DRAW ===
-The image below is the floor plan you must render. Ignore its current visual style — you are replacing it with the style from the STYLE REFERENCE above.
-
-OUTPUT REQUIREMENTS:
-- Generate a NEW image showing THIS floor plan's exact room layout, walls, doors, windows, and labels
-- Apply the colors, textures, line weights, shading, furniture style, and materials from the STYLE REFERENCE
-- The output must NOT look like the STYLE REFERENCE — it must look like THIS floor plan drawn in that style
-- Every room in the output must correspond to a room in THIS floor plan image below`,
-      });
-    } else {
-      messageContent.push({
-        type: "text",
-        text: `You are an expert architectural renderer. Given this floor plan image, generate a beautifully rendered version in the following style:\n\n${prompt}\n\nCreate a high-quality architectural visualization based on the floor plan layout. Maintain the spatial arrangement and proportions of the original floor plan while applying the requested artistic style. Important: if the floor plan contains any staircases, render them so that steps ascend in only one direction — one end of the staircase faces the lower floor and the other end faces the upper floor. Never render steps going in both directions simultaneously.`,
-      });
-    }
-
-    // Add the floor plan last
-    messageContent.push({ type: "image_url", image_url: { url: floorPlanBase64 } });
-
-
-    const commonBody = JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: messageContent.map(part => {
-            if (part.type === "text") return { text: part.text };
-            if (part.type === "image_url") {
-              const base64Data = part.image_url.url.split(",")[1];
-              const mimeType = part.image_url.url.split(",")[0].split(":")[1].split(";")[0];
-              return { inline_data: { mime_type: mimeType, data: base64Data } };
-            }
-            return {};
-          }),
-        },
-      ],
-      generationConfig: {
-        responseModalities: ["IMAGE", "TEXT"],
-      },
-    });
-
-    const useVertexAI = true;
-
     const VERTEX_PROJECT_ID = Deno.env.get("VERTEX_PROJECT_ID") || "YOUR_PROJECT_ID";
     const VERTEX_LOCATION = Deno.env.get("VERTEX_LOCATION") || "us-central1";
-    const VERTEX_MODEL = "gemini-3-pro-image-preview";
     const VERTEX_API_KEY = Deno.env.get("VERTEX_API_KEY");
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
-    const apiUrl = useVertexAI
-      ? `https://aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent`
-      : `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${GEMINI_API_KEY}`;
+    // Image-generation model (Vertex AI)
+    const imageApiUrl = `https://aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/gemini-3-pro-image-preview:generateContent`;
+    // Text model for style extraction (Vertex AI — gemini-2.5-flash)
+    const textApiUrl = `https://aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT_ID}/locations/${VERTEX_LOCATION}/publishers/google/models/gemini-2.5-flash:generateContent`;
 
-    const apiHeaders: Record<string, string> = { "Content-Type": "application/json" };
-    if (useVertexAI) {
-      apiHeaders["x-goog-api-key"] = VERTEX_API_KEY || "";
-    }
+    const imageHeaders: Record<string, string> = { "Content-Type": "application/json", "x-goog-api-key": VERTEX_API_KEY || "" };
+    const textHeaders: Record<string, string> = { "Content-Type": "application/json", "x-goog-api-key": VERTEX_API_KEY || "" };
 
-    // Retry with exponential backoff on 429 (quota exhausted)
-    let aiResponse!: Response;
-    const maxRetries = 4;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      aiResponse = await fetch(apiUrl, { method: "POST", headers: apiHeaders, body: commonBody });
-
-      if (aiResponse.status !== 429) break;
-
-      if (attempt < maxRetries) {
-        const delay = Math.min(2000 * Math.pow(2, attempt), 30000); // 2s, 4s, 8s, 16s (cap 30s)
-        console.warn(`429 rate limit hit, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
+    // Helper: serialize parts to Gemini format
+    const serializeParts = (parts: any[]) => parts.map(part => {
+      if (part.type === "text") return { text: part.text };
+      if (part.type === "image_url") {
+        const base64Data = part.image_url.url.split(",")[1];
+        const mimeType = part.image_url.url.split(",")[0].split(":")[1].split(";")[0];
+        return { inline_data: { mime_type: mimeType, data: base64Data } };
       }
+      return {};
+    });
+
+    // Helper: call API with exponential backoff on 429
+    const callApi = async (url: string, headers: Record<string, string>, body: string): Promise<Response> => {
+      let res!: Response;
+      const maxRetries = 4;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        res = await fetch(url, { method: "POST", headers, body });
+        if (res.status !== 429) break;
+        if (attempt < maxRetries) {
+          const delay = Math.min(2000 * Math.pow(2, attempt), 30000);
+          console.warn(`429 rate limit hit, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+      return res;
+    };
+
+    let finalBody: string;
+
+    if (isCloneStyle) {
+      // ── STEP 1: Extract style as text from the reference image ──────────────
+      const refBase64 = referenceImages[0];
+      const step1Parts = [
+        {
+          type: "text",
+          text: `You are an expert architectural renderer. Analyze this floor plan rendering and describe its complete visual style in precise detail. Cover:
+- Rendering medium (watercolor, CAD, hand-drawn, digital, etc.)
+- Line weights and wall treatment (thickness, fill, outlines)
+- Exact color palette for each room type (bedroom, bathroom, kitchen, living, outdoor, etc.)
+- Flooring textures per room (wood planks, tiles, hatching, carpet)
+- Furniture drawing style (silhouette detail, shading, shadows)
+- Shadow and depth treatment (drop shadows, ambient shading, direction)
+- Vegetation and exterior style (tree shapes, colors, ground textures)
+- Background and paper color
+- Typography style for room labels
+- Overall artistic mood
+
+Be specific and detailed — your description will be used as instructions to redraw a different floor plan in this exact style.`,
+        },
+        { type: "image_url", image_url: { url: refBase64 } },
+      ];
+
+      const step1Body = JSON.stringify({
+        contents: [{ role: "user", parts: serializeParts(step1Parts) }],
+        generationConfig: { responseModalities: ["TEXT"] },
+      });
+      const step1Response = await callApi(textApiUrl, textHeaders, step1Body);
+      if (!step1Response.ok) {
+        const errText = await step1Response.text();
+        return new Response(JSON.stringify({ error: `Style extraction failed: ${errText}` }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const step1Data = await step1Response.json();
+      const styleDescription = step1Data.candidates?.[0]?.content?.parts?.find((p: any) => p.text)?.text || "";
+      if (!styleDescription) {
+        return new Response(JSON.stringify({ error: "Failed to extract style description from reference image." }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      console.log("Extracted style description:", styleDescription.slice(0, 200));
+
+      // ── STEP 2: Render the floor plan using the extracted style text ─────────
+      const step2Parts = [
+        {
+          type: "text",
+          text: `You are an expert architectural renderer. Render the floor plan image below in the following visual style:
+
+${styleDescription}
+
+RULES:
+- Preserve the floor plan's exact layout — every wall, room, door, window, and label stays in place
+- Only change the visual appearance to match the style described above
+- Output a top-down 2D rendered floor plan
+- If there are staircases, render steps ascending in one direction only`,
+        },
+        { type: "image_url", image_url: { url: floorPlanBase64 } },
+      ];
+      finalBody = JSON.stringify({
+        contents: [{ role: "user", parts: serializeParts(step2Parts) }],
+        generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+      });
+    } else {
+      const renderParts = [
+        {
+          type: "text",
+          text: `You are an expert architectural renderer. Given this floor plan image, generate a beautifully rendered version in the following style:\n\n${prompt}\n\nCreate a high-quality architectural visualization based on the floor plan layout. Maintain the spatial arrangement and proportions of the original floor plan while applying the requested artistic style. Important: if the floor plan contains any staircases, render them so that steps ascend in only one direction — one end of the staircase faces the lower floor and the other end faces the upper floor. Never render steps going in both directions simultaneously.`,
+        },
+        { type: "image_url", image_url: { url: floorPlanBase64 } },
+      ];
+      finalBody = JSON.stringify({
+        contents: [{ role: "user", parts: serializeParts(renderParts) }],
+        generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+      });
     }
+
+    const aiResponse = await callApi(imageApiUrl, imageHeaders, finalBody);
 
     if (!aiResponse.ok) {
       const status = aiResponse.status;
