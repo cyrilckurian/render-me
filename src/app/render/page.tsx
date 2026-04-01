@@ -59,7 +59,7 @@ function RenderPageContent() {
     useEffect(() => { scrollRef.current?.scrollTo({ top: 0 }); }, [phase]);
 
     useEffect(() => {
-        const renderId = searchParams.get("id");
+        const renderId = searchParams?.get("id");
         if (renderId) {
             supabase.from("renders").select("*").eq("id", renderId).single().then(async ({ data: render }) => {
                 if (!render) return;

@@ -40,7 +40,9 @@ type Comment = {
 };
 
 export default function ReviewGuestPage() {
-  const { projectId, token } = useParams<{ projectId: string; token: string }>();
+  const params = useParams<{ projectId: string; token: string }>();
+  const projectId = params?.projectId;
+  const token = params?.token;
 
   // Auth state
   const [linkData, setLinkData] = useState<ReviewLink | null>(null);

@@ -901,7 +901,7 @@ function VariationTab({ label, isSelected, feedback, canFeedback, onSelect, onFe
 interface MobileRegionBoxProps {
   region: Region;
   isActive: boolean;
-  canvasRef: React.RefObject<HTMLDivElement>;
+  canvasRef: React.RefObject<HTMLDivElement | null>;
   onActivate: () => void;
   onUpdateGeometry: (patch: { x: number; y: number; w: number; h: number }) => void;
 }
@@ -1212,7 +1212,7 @@ export default function EditPage() {
   }, []);
 
   // ── Resume composition from history ─────────────────────────────────────────
-  const compositionParam = searchParams.get("composition");
+  const compositionParam = searchParams?.get("composition");
 
   /** A data: URL is only valid if it has enough content to form a real image (>1KB of base64) */
   const isValidDataUrl = (url: string) => url.startsWith("data:") && url.length > 1000;

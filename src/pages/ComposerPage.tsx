@@ -779,7 +779,7 @@ export default function ComposerPage() {
 
   // ── Load session from ?session= query param ───────────────────────────────
   useEffect(() => {
-    const sessionParam = searchParams.get("session");
+    const sessionParam = searchParams?.get("session");
     if (!sessionParam) return;
     (async () => {
       const { data } = await (supabase.from as any)("composer_sessions")
@@ -943,7 +943,7 @@ export default function ComposerPage() {
       { id: uid(), variations: newVariations.map((v) => ({
         id: v.id,
         storagePath: v.storagePath,
-        imageBase64: v.storagePath ? undefined : v.imageBase64,
+        imageBase64: v.storagePath ? "" : (v.imageBase64 ?? ""),
         feedback: v.feedback,
       })) },
     ];
