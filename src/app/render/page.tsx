@@ -56,6 +56,7 @@ function RenderPageContent() {
     const [referenceImages, setReferenceImages] = useState<string[]>([]);
     const [refsModalOpen, setRefsModalOpen] = useState(false);
     const [saveStyleModalOpen, setSaveStyleModalOpen] = useState(false);
+    const [extractedStylePrompt, setExtractedStylePrompt] = useState<string | null>(null);
     const hasManuallyLoggedOut = useRef(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -146,17 +147,18 @@ function RenderPageContent() {
 
     const refreshSavedStyles = useCallback(async (userId: string) => {
         setStylesLoading(true);
-        const { data } = await supabase.from("style_requests").select("id, title, sample_urls, status").eq("user_id", userId).eq("status", "saved");
+        const { data } = await supabase.from("style_requests").select("id, title, sample_urls, status, style_prompt").eq("user_id", userId).eq("status", "saved");
         if (!data || data.length === 0) { setSavedCustomStyles([]); setStylesLoading(false); return; }
         const loaded: RenderingStyle[] = await Promise.all(
-            data.map(async (r) => {
-                const rawPath = (r.sample_urls as string[])[0] ?? "";
+            data.map(async (r: any) => {
+                const rawPath = ((r.sample_urls as string[]) || [])[0] ?? "";
                 let image = rawPath;
                 if (rawPath && !rawPath.startsWith("data:") && !rawPath.startsWith("blob:") && !rawPath.startsWith("http")) {
                     const { data: signed } = await supabase.storage.from("floor-plans").createSignedUrl(rawPath, 3600);
                     if (signed?.signedUrl) image = signed.signedUrl;
                 }
-                return { id: r.id, name: r.title, description: "Your saved style", prompt: "", image };
+                // Use saved style_prompt as the render prompt — avoids re-extraction on each render
+                return { id: r.id, name: r.title, description: "Your saved style", prompt: r.style_prompt || "", image };
             })
         );
         setSavedCustomStyles(loaded);
@@ -274,6 +276,9 @@ function RenderPageContent() {
                     if (signed?.signedUrl) setOriginalImageUrl(signed.signedUrl);
                 }
             }
+            // Capture extracted style prompt for saving with the style
+            if (data.extractedStylePrompt) setExtractedStylePrompt(data.extractedStylePrompt);
+            else setExtractedStylePrompt(null);
             setRenderName(selectedStyle?.name ? `${selectedStyle.name} Render` : "Custom Render");
             setPhase("results");
         } catch (e: any) {
@@ -649,23 +654,22 @@ function RenderPageContent() {
                 onSave={async (name) => {
                     const { data: { session } } = await supabase.auth.getSession();
                     if (!session) return;
-                    // Use storage paths from the render record (never expire, proper format for re-rendering)
+                    // Prefer extracted style prompt (from clone renders) — gives instant future renders
+                    // Fall back to storage paths for regular renders
                     let sampleUrls: string[] = [];
                     if (currentRenderId) {
                         const { data: render } = await (supabase.from as any)("renders")
                             .select("rendered_image_path, reference_image_paths")
                             .eq("id", currentRenderId)
                             .single();
-                        if (render?.reference_image_paths?.length) {
-                            sampleUrls = render.reference_image_paths;  // clone render — use original refs
-                        } else if (render?.rendered_image_path) {
-                            sampleUrls = [render.rendered_image_path];  // regular render — use output as style ref
-                        }
+                        if (render?.reference_image_paths?.length) sampleUrls = render.reference_image_paths;
+                        else if (render?.rendered_image_path) sampleUrls = [render.rendered_image_path];
                     }
                     await (supabase.from as any)("style_requests").insert({
                         user_id: session.user.id,
                         title: name,
                         sample_urls: sampleUrls,
+                        style_prompt: extractedStylePrompt || null,
                         status: "saved",
                     });
                     setSaveStyleModalOpen(false);

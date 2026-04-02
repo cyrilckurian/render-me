@@ -110,6 +110,7 @@ export default function ClonePage() {
     const [shouldAutoRender, setShouldAutoRender] = useState(false);
     const [saveStyleModalOpen, setSaveStyleModalOpen] = useState(false);
     const [refsModalOpen, setRefsModalOpen] = useState(false);
+    const [extractedStylePrompt, setExtractedStylePrompt] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const hasManuallyLoggedOut = useRef(false);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -209,6 +210,8 @@ export default function ClonePage() {
                     }
                 }
             }
+            // Save the extracted style prompt so it can be persisted when user saves the style
+            setExtractedStylePrompt(data.extractedStylePrompt || null);
             setRenderName("Cloned Style Render");
             setPhase("results");
             setTimeout(() => setSaveStyleModalOpen(true), 800);
@@ -525,7 +528,7 @@ export default function ClonePage() {
                 onSave={async (name) => {
                     const { data: { session } } = await supabase.auth.getSession();
                     if (!session) return;
-                    // Use storage paths from the render record (never expire, proper format for re-rendering)
+                    // Use storage paths from the render record (never expire)
                     let sampleUrls: string[] = [];
                     if (currentRenderId) {
                         const { data: render } = await supabase.from("renders" as any)
@@ -538,7 +541,13 @@ export default function ClonePage() {
                             sampleUrls = [(render as any).rendered_image_path];
                         }
                     }
-                    await supabase.from("style_requests" as any).insert({ user_id: session.user.id, title: name, sample_urls: sampleUrls, status: "saved" });
+                    await supabase.from("style_requests" as any).insert({
+                        user_id: session.user.id,
+                        title: name,
+                        sample_urls: sampleUrls,
+                        style_prompt: extractedStylePrompt || null,
+                        status: "saved",
+                    });
                     setSaveStyleModalOpen(false);
                     toast.success(`"${name}" saved to your styles!`);
                 }}

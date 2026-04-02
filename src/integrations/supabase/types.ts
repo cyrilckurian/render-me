@@ -424,6 +424,7 @@ export type Database = {
           id: string
           sample_urls: string[]
           status: string
+          style_prompt: string | null
           title: string
           user_id: string
         }
@@ -432,6 +433,7 @@ export type Database = {
           id?: string
           sample_urls?: string[]
           status?: string
+          style_prompt?: string | null
           title: string
           user_id: string
         }
@@ -440,6 +442,7 @@ export type Database = {
           id?: string
           sample_urls?: string[]
           status?: string
+          style_prompt?: string | null
           title?: string
           user_id?: string
         }

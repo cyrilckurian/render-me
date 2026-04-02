@@ -88,6 +88,7 @@ serve(async (req) => {
     };
 
     let finalBody: string;
+    let styleDescription = "";  // hoisted — populated during clone style extraction
 
     if (isCloneStyle) {
       // ── STEP 1: Extract style as text from ALL reference images ──────────────
@@ -124,13 +125,16 @@ Be specific and detailed — your description will be used as instructions to re
         });
       }
       const step1Data = await step1Response.json();
-      const styleDescription = step1Data.candidates?.[0]?.content?.parts?.find((p: any) => p.text)?.text || "";
+      styleDescription = step1Data.candidates?.[0]?.content?.parts?.find((p: any) => p.text)?.text || "";
       if (!styleDescription) {
         return new Response(JSON.stringify({ error: "Failed to extract style description from reference images." }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       console.log(`Extracted style from ${imageCount} reference(s):`, styleDescription.slice(0, 200));
+
+      // Store the extracted style description so caller can persist it
+      // (used to avoid re-extracting on future renders with this saved style)
 
       // ── STEP 2: Render the floor plan using the extracted style text ─────────
       const step2Parts = [
@@ -345,6 +349,7 @@ RULES:
         renderedBase64: generatedImage,
         renderId: insertData?.id ?? null,
         renderPath: renderStoragePath,
+        extractedStylePrompt: isCloneStyle ? styleDescription : null,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
