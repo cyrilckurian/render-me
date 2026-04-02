@@ -7,9 +7,11 @@ interface ImageCompareSliderProps {
   renderedUrl: string;
   /** 0 = full rendered, 100 = full original */
   initialPosition?: number;
+  /** Called when the rendered image finishes loading */
+  onRenderedLoad?: () => void;
 }
 
-export function ImageCompareSlider({ originalUrl, renderedUrl, initialPosition = 0 }: ImageCompareSliderProps) {
+export function ImageCompareSlider({ originalUrl, renderedUrl, initialPosition = 0, onRenderedLoad }: ImageCompareSliderProps) {
   const [position, setPosition] = useState(initialPosition);
   const [dragging, setDragging] = useState(false);
   const animFrameRef = useRef<number | null>(null);
@@ -33,6 +35,7 @@ export function ImageCompareSlider({ originalUrl, renderedUrl, initialPosition =
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     setDimensions({ w: img.naturalWidth, h: img.naturalHeight });
+    onRenderedLoad?.();
   };
 
   const getPositionFromEvent = useCallback((clientX: number) => {

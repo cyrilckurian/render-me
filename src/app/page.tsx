@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
+import { PageLoader } from "@/components/PageLoader";
 import { Menu } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 // import { lovable } from "@/integrations/lovable"; // Removed Lovable
@@ -13,11 +14,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { getRedirectUrl } from "@/lib/auth";
+import { useSidebar } from "@/lib/sidebar-context";
 
 export default function Home() {
   const router = useRouter();
+  const { openOverlay } = useSidebar();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
@@ -69,6 +71,8 @@ export default function Home() {
     }
   };
 
+  if (authLoading) return <PageLoader />;
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -96,8 +100,8 @@ export default function Home() {
           )}
           {isLoggedIn && (
             <button
-              onClick={() => setMobileOpen(true)}
-              className="md:hidden flex items-center justify-center w-9 h-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              onClick={() => openOverlay()}
+              className="flex items-center justify-center w-9 h-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             >
               <Menu className="w-5 h-5" />
             </button>

@@ -6,6 +6,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Providers } from "./providers";
 import DashboardLayout from "./dashboard-layout";
+import { NavigationLoader } from "@/components/NavigationLoader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,6 +35,7 @@ export default function RootLayout({
       >
         <Providers>
           <TooltipProvider>
+            <NavigationLoader />
             <DashboardLayout>
               {children}
             </DashboardLayout>

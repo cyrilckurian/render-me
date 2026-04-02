@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Image } from "https://deno.land/x/imagescript@1.2.15/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -89,12 +90,12 @@ serve(async (req) => {
     let finalBody: string;
 
     if (isCloneStyle) {
-      // ── STEP 1: Extract style as text from the reference image ──────────────
-      const refBase64 = referenceImages[0];
-      const step1Parts = [
+      // ── STEP 1: Extract style as text from ALL reference images ──────────────
+      const imageCount = referenceImages.length;
+      const step1Parts: any[] = [
         {
           type: "text",
-          text: `You are an expert architectural renderer. Analyze this floor plan rendering and describe its complete visual style in precise detail. Cover:
+          text: `You are an expert architectural renderer. Analyze the ${imageCount > 1 ? `${imageCount} floor plan renderings` : "floor plan rendering"} below and describe a unified visual style in precise detail that captures the common aesthetic across all images. Cover:
 - Rendering medium (watercolor, CAD, hand-drawn, digital, etc.)
 - Line weights and wall treatment (thickness, fill, outlines)
 - Exact color palette for each room type (bedroom, bathroom, kitchen, living, outdoor, etc.)
@@ -108,7 +109,7 @@ serve(async (req) => {
 
 Be specific and detailed — your description will be used as instructions to redraw a different floor plan in this exact style.`,
         },
-        { type: "image_url", image_url: { url: refBase64 } },
+        ...referenceImages.map((img: string) => ({ type: "image_url", image_url: { url: img } })),
       ];
 
       const step1Body = JSON.stringify({
@@ -125,11 +126,11 @@ Be specific and detailed — your description will be used as instructions to re
       const step1Data = await step1Response.json();
       const styleDescription = step1Data.candidates?.[0]?.content?.parts?.find((p: any) => p.text)?.text || "";
       if (!styleDescription) {
-        return new Response(JSON.stringify({ error: "Failed to extract style description from reference image." }), {
+        return new Response(JSON.stringify({ error: "Failed to extract style description from reference images." }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      console.log("Extracted style description:", styleDescription.slice(0, 200));
+      console.log(`Extracted style from ${imageCount} reference(s):`, styleDescription.slice(0, 200));
 
       // ── STEP 2: Render the floor plan using the extracted style text ─────────
       const step2Parts = [
@@ -259,8 +260,9 @@ RULES:
 
     const base64Data = generatedImage.replace(/^data:image\/\w+;base64,/, "");
     const imageBytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
-    const renderFileName = `${user.id}/${crypto.randomUUID()}.png`;
-    const renderStoragePath = `renders/${renderFileName}`;
+    const renderUUID = crypto.randomUUID();
+    const renderFolder = `renders/${user.id}/${renderUUID}`;
+    const renderStoragePath = `${renderFolder}/original.png`;
 
     const { error: uploadError } = await serviceClient.storage
       .from("floor-plans")
@@ -274,6 +276,47 @@ RULES:
       });
     }
 
+    // Generate and upload thumbnail (150px wide JPEG q50) in the same folder
+    let thumbnailStoragePath: string | null = null;
+    try {
+      const img = await Image.decode(imageBytes);
+      const thumbWidth = 150;
+      const thumbHeight = Math.round((img.height / img.width) * thumbWidth);
+      const thumb = img.resize(thumbWidth, thumbHeight);
+      const thumbBytes = await thumb.encodeJPEG(50);
+      thumbnailStoragePath = `${renderFolder}/thumbnail.jpg`;
+      const { error: thumbError } = await serviceClient.storage
+        .from("floor-plans")
+        .upload(thumbnailStoragePath, thumbBytes, { contentType: "image/jpeg" });
+      if (thumbError) {
+        console.error("Thumbnail upload error:", thumbError.message);
+        thumbnailStoragePath = null;
+      }
+    } catch (thumbErr) {
+      console.error("Thumbnail generation error:", thumbErr);
+      thumbnailStoragePath = null;
+    }
+
+    // Upload reference images to storage (for clone-style renders)
+    const referenceStoragePaths: string[] = [];
+    if (isCloneStyle && Array.isArray(referenceImages) && referenceImages.length > 0) {
+      for (let i = 0; i < referenceImages.length; i++) {
+        try {
+          const dataUrl = referenceImages[i] as string;
+          const base64Part = dataUrl.split(",")[1];
+          if (!base64Part) continue;
+          const refBytes = Uint8Array.from(atob(base64Part), (c) => c.charCodeAt(0));
+          const refPath = `references/${user.id}/${renderUUID}/ref_${i}.png`;
+          const { error: refErr } = await serviceClient.storage
+            .from("floor-plans")
+            .upload(refPath, refBytes, { contentType: "image/png" });
+          if (!refErr) referenceStoragePaths.push(refPath);
+        } catch (e) {
+          console.error(`Ref image ${i} upload error:`, e);
+        }
+      }
+    }
+
     // Save render record
     const { data: insertData, error: insertError } = await serviceClient.from("renders").insert({
       user_id: user.id,
@@ -283,6 +326,8 @@ RULES:
       floor_plan_name: floorPlanName || "floor-plan.png",
       floor_plan_path: originalStoragePath,
       rendered_image_path: renderStoragePath,
+      ...(thumbnailStoragePath ? { thumbnail_path: thumbnailStoragePath } : {}),
+      ...(referenceStoragePaths.length > 0 ? { reference_image_paths: referenceStoragePaths } : {}),
     }).select("id").single();
 
     if (insertError) {

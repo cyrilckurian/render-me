@@ -175,6 +175,8 @@ export type Database = {
           id: string
           prompt: string
           rendered_image_path: string | null
+          thumbnail_path: string | null
+          reference_image_paths: string[] | null
           style_id: string
           style_name: string
           user_id: string
@@ -186,6 +188,8 @@ export type Database = {
           id?: string
           prompt: string
           rendered_image_path?: string | null
+          thumbnail_path?: string | null
+          reference_image_paths?: string[] | null
           style_id: string
           style_name: string
           user_id: string
@@ -197,6 +201,8 @@ export type Database = {
           id?: string
           prompt?: string
           rendered_image_path?: string | null
+          thumbnail_path?: string | null
+          reference_image_paths?: string[] | null
           style_id?: string
           style_name?: string
           user_id?: string

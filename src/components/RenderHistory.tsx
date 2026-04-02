@@ -159,11 +159,15 @@ function Content({
                   />
                 )}
                 {renders.map((render) => {
-                  const imgSrc = render.rendered_image_path
-                    ? isStoragePath(render.rendered_image_path)
-                      ? signedUrls[render.rendered_image_path]
-                      : render.rendered_image_path
-                    : null;
+                  // Use thumbnail for tile display, fall back to full render
+                  const thumbPath = render.thumbnail_path;
+                  const imgSrc = thumbPath && isStoragePath(thumbPath)
+                    ? signedUrls[thumbPath]
+                    : render.rendered_image_path
+                      ? isStoragePath(render.rendered_image_path)
+                        ? signedUrls[render.rendered_image_path]
+                        : render.rendered_image_path
+                      : null;
                   return (
                     <button
                       key={render.id}
@@ -367,11 +371,19 @@ export function RenderHistory({
   const [composerThumbUrls, setComposerThumbUrls] = useState<Record<string, string>>({});
 
   const generateSignedUrls = async (list: Render[]) => {
-    const paths = list
-      .filter((r) => r.rendered_image_path && isStoragePath(r.rendered_image_path))
+    // For tiles: prefer thumbnail_path (small JPEG), fallback to rendered_image_path
+    const thumbPaths = list
+      .map((r) => r.thumbnail_path && isStoragePath(r.thumbnail_path) ? r.thumbnail_path : null)
+      .filter(Boolean) as string[];
+
+    const fullPaths = list
+      .filter((r) => !r.thumbnail_path && r.rendered_image_path && isStoragePath(r.rendered_image_path))
       .map((r) => r.rendered_image_path as string);
-    if (paths.length === 0) return;
-    const { data } = await supabase.storage.from("floor-plans").createSignedUrls(paths, 3600);
+
+    const allPaths = [...new Set([...thumbPaths, ...fullPaths])];
+    if (allPaths.length === 0) return;
+
+    const { data } = await supabase.storage.from("floor-plans").createSignedUrls(allPaths, 3600);
     if (data) {
       const map: Record<string, string> = {};
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -588,12 +600,7 @@ export function RenderHistory({
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <div className="hidden md:flex fixed left-0 top-0 bottom-0 z-40 w-72 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex-col shadow-xl">
-        <Content {...sharedProps} />
-      </div>
-
-      {/* Overlay sidebar */}
+      {/* Overlay sidebar — slides in from left on desktop */}
       <AnimatePresence>
         {overlayOpen && (
           <motion.div

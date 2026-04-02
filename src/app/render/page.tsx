@@ -2,8 +2,9 @@
 
 import { useState, useCallback, useEffect, useRef, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Download, MoreVertical, Trash2, Menu, Loader2, ThumbsUp, ThumbsDown, Share2 } from "lucide-react";
+import { ArrowLeft, Download, MoreVertical, Trash2, Loader2, ThumbsUp, ThumbsDown, Share2, Menu, Home, Bookmark, Images, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSidebar } from "@/lib/sidebar-context";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -17,20 +18,20 @@ import { AuthModal } from "@/components/AuthModal";
 import { FeedbackModal } from "@/components/FeedbackModal";
 import { GeneratingState } from "@/components/GeneratingState";
 import { ImageCompareSlider } from "@/components/ImageCompareSlider";
+import { SaveStyleModal } from "@/components/SaveStyleModal";
+import { PageLoader } from "@/components/PageLoader";
 // import { lovable } from "@/integrations/lovable"; // Removed Lovable
 import { renderingStyles, type RenderingStyle } from "@/data/renderingStyles";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import type { Tables } from "@/integrations/supabase/types";
 import { getRedirectUrl } from "@/lib/auth";
 
 function RenderPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const { openOverlay, isLoggedIn: sidebarLoggedIn } = useSidebar();
     const [isLoggedIn, setIsLoggedIn] = useState(false);
-    const [mobileOpen, setMobileOpen] = useState(false);
-    const [isGeneratingShared, setIsGeneratingShared] = useState(false);
 
     const [floorPlanFile, setFloorPlanFile] = useState<File | null>(null);
     const [floorPlanPreview, setFloorPlanPreview] = useState<string | null>(null);
@@ -38,6 +39,7 @@ function RenderPageContent() {
     const [floorPlanIsPdf, setFloorPlanIsPdf] = useState(false);
     const [pendingPdfFile, setPendingPdfFile] = useState<File | null>(null);
     const [savedCustomStyles, setSavedCustomStyles] = useState<RenderingStyle[]>([]);
+    const [stylesLoading, setStylesLoading] = useState(true);
     const [selectedStyle, setSelectedStyle] = useState<RenderingStyle | null>(null);
     const [phase, setPhase] = useState<"workspace" | "generating" | "authRequired" | "rendering" | "results">(
         typeof window !== "undefined" && sessionStorage.getItem("pendingRender") ? "rendering" : "workspace"
@@ -47,10 +49,13 @@ function RenderPageContent() {
     const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
     const [currentRenderId, setCurrentRenderId] = useState<string | null>(null);
     const [renderName, setRenderName] = useState<string>("");
-    const [isGenerating, setIsGenerating] = useState(false);
+    const [isLoadingRender, setIsLoadingRender] = useState(false);
     const [shouldAutoRender, setShouldAutoRender] = useState(false);
     const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
     const [thumbsFeedback, setThumbsFeedback] = useState<"up" | "down" | null>(null);
+    const [referenceImages, setReferenceImages] = useState<string[]>([]);
+    const [refsModalOpen, setRefsModalOpen] = useState(false);
+    const [saveStyleModalOpen, setSaveStyleModalOpen] = useState(false);
     const hasManuallyLoggedOut = useRef(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -61,11 +66,11 @@ function RenderPageContent() {
     useEffect(() => {
         const renderId = searchParams?.get("id");
         if (renderId) {
+            setIsLoadingRender(true);
+            setRenderedImageUrl(null);
+            setOriginalImageUrl(null);
             supabase.from("renders").select("*").eq("id", renderId).single().then(async ({ data: render }) => {
-                if (!render) return;
-                setPhase("results");
-                setRenderedImageUrl(render.rendered_image_path); // Note: Should probably check for storage vs URL
-                setOriginalImageUrl(null); // Will fill in below
+                if (!render) { setIsLoadingRender(false); return; }
                 setCurrentRenderId(render.id);
                 setRenderName(render.style_name || "Render");
                 const { data: signed } = await supabase.storage.from("floor-plans").createSignedUrl(render.floor_plan_path, 3600);
@@ -73,7 +78,36 @@ function RenderPageContent() {
                 if (render.rendered_image_path && !render.rendered_image_path.startsWith("http")) {
                     const { data: renderSigned } = await supabase.storage.from("floor-plans").createSignedUrl(render.rendered_image_path, 3600);
                     if (renderSigned?.signedUrl) setRenderedImageUrl(renderSigned.signedUrl);
+                } else {
+                    setRenderedImageUrl(render.rendered_image_path);
                 }
+                // Load reference images (clone-style renders store paths in reference_image_paths)
+                const refPaths = render.reference_image_paths;
+                if (refPaths && refPaths.length > 0) {
+                    const refs = await Promise.all(
+                        refPaths.map(async (path) => {
+                            const { data: s } = await supabase.storage.from("floor-plans").createSignedUrl(path, 3600);
+                            return s?.signedUrl || null;
+                        })
+                    );
+                    setReferenceImages(refs.filter(Boolean) as string[]);
+                } else if (render.style_id && /^[0-9a-f-]{36}$/i.test(render.style_id)) {
+                    // Fallback: custom style from style_requests
+                    const { data: styleData } = await supabase.from("style_requests").select("sample_urls").eq("id", render.style_id).single();
+                    if (styleData?.sample_urls?.length) {
+                        const refs = await Promise.all(
+                            (styleData.sample_urls as string[]).map(async (path) => {
+                                if (path.startsWith("data:") || path.startsWith("http")) return path;
+                                const { data: s } = await supabase.storage.from("floor-plans").createSignedUrl(path, 3600);
+                                return s?.signedUrl || null;
+                            })
+                        );
+                        setReferenceImages(refs.filter(Boolean) as string[]);
+                    }
+                }
+                setPhase("results");
+                // Do NOT call setIsLoadingRender(false) here —
+                // the loader stays until the rendered image fires onLoad (see results view).
             });
             return;
         }
@@ -108,6 +142,25 @@ function RenderPageContent() {
                 setPhase("workspace");
             }
         }
+    }, [searchParams]);
+
+    const refreshSavedStyles = useCallback(async (userId: string) => {
+        setStylesLoading(true);
+        const { data } = await supabase.from("style_requests").select("id, title, sample_urls, status").eq("user_id", userId).eq("status", "saved");
+        if (!data || data.length === 0) { setSavedCustomStyles([]); setStylesLoading(false); return; }
+        const loaded: RenderingStyle[] = await Promise.all(
+            data.map(async (r) => {
+                const rawPath = (r.sample_urls as string[])[0] ?? "";
+                let image = rawPath;
+                if (rawPath && !rawPath.startsWith("data:") && !rawPath.startsWith("blob:") && !rawPath.startsWith("http")) {
+                    const { data: signed } = await supabase.storage.from("floor-plans").createSignedUrl(rawPath, 3600);
+                    if (signed?.signedUrl) image = signed.signedUrl;
+                }
+                return { id: r.id, name: r.title, description: "Your saved style", prompt: "", image };
+            })
+        );
+        setSavedCustomStyles(loaded);
+        setStylesLoading(false);
     }, []);
 
     const applySession = useCallback((session: { user: { id: string } } | null) => {
@@ -115,32 +168,19 @@ function RenderPageContent() {
         setIsLoggedIn(true);
         const userId = session.user.id;
         // Load saved custom styles
-        supabase.from("style_requests").select("id, title, sample_urls, status").eq("user_id", userId).eq("status", "saved").then(async ({ data }) => {
-            if (!data || data.length === 0) return;
-            const loaded: RenderingStyle[] = await Promise.all(
-                data.map(async (r) => {
-                    const rawPath = (r.sample_urls as string[])[0] ?? "";
-                    let image = rawPath;
-                    if (rawPath && !rawPath.startsWith("data:") && !rawPath.startsWith("blob:") && !rawPath.startsWith("http")) {
-                        const { data: signed } = await supabase.storage.from("floor-plans").createSignedUrl(rawPath, 3600);
-                        if (signed?.signedUrl) image = signed.signedUrl;
-                    }
-                    return { id: r.id, name: r.title, description: "Your saved style", prompt: "", image };
-                })
-            );
-            setSavedCustomStyles(loaded);
-        });
-    }, []);
+        refreshSavedStyles(userId);
+    }, [refreshSavedStyles]);
 
     useEffect(() => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             if (hasManuallyLoggedOut.current) return;
             if (event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
-                if (session?.user) setTimeout(() => applySession(session), 0); else setIsLoggedIn(false);
-            } else if (event === "SIGNED_OUT") { setIsLoggedIn(false); }
+                if (session?.user) setTimeout(() => applySession(session), 0); else { setIsLoggedIn(false); setStylesLoading(false); }
+            } else if (event === "SIGNED_OUT") { setIsLoggedIn(false); setStylesLoading(false); }
         });
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (!hasManuallyLoggedOut.current && session?.user) applySession(session);
+            else if (!session?.user) setStylesLoading(false);
         });
         return () => { subscription.unsubscribe(); };
     }, [applySession]);
@@ -165,10 +205,10 @@ function RenderPageContent() {
         const currentPrompt = prompt || promptText;
         const isCustomStyle = selectedStyle && !selectedStyle.prompt;
         if (!currentBase64 || (!currentPrompt && !isCustomStyle)) return;
-        setPhase("rendering"); setIsGenerating(true); setIsGeneratingShared(true);
+        setPhase("rendering");
         try {
             const { data: { session } } = await supabase.auth.getSession();
-            if (!session) { setPhase("authRequired"); setIsGenerating(false); setIsGeneratingShared(false); return; }
+            if (!session) { setPhase("authRequired"); return; }
 
             // For custom (clone) styles, fetch reference images from storage
             let referenceImages: string[] | undefined;
@@ -196,6 +236,7 @@ function RenderPageContent() {
                         })
                     );
                     referenceImages = refs.filter(Boolean) as string[];
+                    setReferenceImages(referenceImages);
                     effectivePrompt = `__CLONE_STYLE__ ${selectedStyle.name}`;
                 }
             }
@@ -222,10 +263,10 @@ function RenderPageContent() {
                 }
             }
             setRenderName(selectedStyle?.name ? `${selectedStyle.name} Render` : "Custom Render");
-            setPhase("results"); setIsGenerating(false); setIsGeneratingShared(false);
+            setPhase("results");
         } catch (e: any) {
             toast.error(e.message || "Failed to generate rendering. Please try again.");
-            setPhase("workspace"); setIsGenerating(false); setIsGeneratingShared(false);
+            setPhase("workspace");
         }
     }, [floorPlanBase64, promptText, selectedStyle, floorPlanFile]);
 
@@ -271,7 +312,7 @@ function RenderPageContent() {
         setFloorPlanFile(null); setFloorPlanPreview(null); setFloorPlanBase64(null);
         setSelectedStyle(null); setPhase("workspace"); setPromptText("");
         setRenderedImageUrl(null); setOriginalImageUrl(null); setCurrentRenderId(null); setRenderName("");
-        setThumbsFeedback(null);
+        setThumbsFeedback(null); setReferenceImages([]); setRefsModalOpen(false); setSaveStyleModalOpen(false);
     }, []);
 
     const handleDeleteRender = useCallback(async () => {
@@ -285,9 +326,17 @@ function RenderPageContent() {
     return (
         <div className="min-h-screen flex flex-col">
             <header className="border-b border-border px-4 sm:px-6 py-4 flex items-center justify-between shrink-0 sticky top-0 z-30 bg-background">
-                <div className="flex items-center gap-3 h-8">
+                <div className="flex items-center gap-2 h-8">
+                    {isLoggedIn && (
+                        <button
+                            onClick={() => openOverlay()}
+                            className="flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                        >
+                            <Menu className="w-4 h-4" />
+                        </button>
+                    )}
                     <button onClick={() => router.push("/")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
-                        <ArrowLeft className="w-4 h-4" />
+                        <Home className="w-4 h-4" />
                     </button>
                     <span className="text-base font-display font-bold tracking-tight text-foreground">
                         {phase === "results" && renderName ? renderName : "Pick a Style"}
@@ -311,13 +360,10 @@ function RenderPageContent() {
                             Sign in
                         </button>
                     )}
-                    {isLoggedIn && (
-                        <button onClick={() => setMobileOpen(true)} className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-                            <Menu className="w-5 h-5" />
-                        </button>
-                    )}
                 </div>
             </header>
+
+            <AnimatePresence>{isLoadingRender && <PageLoader key="render-loader" />}</AnimatePresence>
 
             <div ref={scrollRef} className="flex-1 flex flex-col overflow-y-auto">
                 <AnimatePresence mode="wait">
@@ -335,12 +381,38 @@ function RenderPageContent() {
                                     </div>
                                     <div>
                                         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Step 2 — Choose a rendering style</h2>
-                                        <StyleCarousel
-                                            styles={[...savedCustomStyles, ...renderingStyles]} selectedId={selectedStyle?.id ?? null} pendingStyles={[]}
-                                            onSelect={(style) => { setSelectedStyle(style); setPromptText(style.prompt); }}
-                                            onDeselect={() => setSelectedStyle(null)}
-                                            onClone={() => router.push("/clone")}
-                                        />
+                                        {stylesLoading ? (
+                                            <div className="flex gap-2 overflow-x-hidden py-2 px-1 pb-4 sm:pb-2">
+                                                {Array.from({ length: 6 }).map((_, i) => (
+                                                    <div
+                                                        key={i}
+                                                        className="flex-shrink-0 w-[calc((100vw-2.5rem)/2.5)] sm:w-28 rounded-lg overflow-hidden border-2 border-border"
+                                                        style={{ animationDelay: `${i * 120}ms` }}
+                                                    >
+                                                        <div
+                                                            className="aspect-square relative overflow-hidden bg-muted-foreground/[0.08] animate-pulse"
+                                                            style={{ animationDelay: `${i * 120}ms` }}
+                                                        >
+                                                            {/* Shimmer sweep */}
+                                                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-muted-foreground/10 to-transparent -translate-x-full animate-[shimmer_1.8s_ease-in-out_infinite]" />
+                                                        </div>
+                                                        <div className="px-2 py-1.5 bg-card space-y-1.5">
+                                                            <div
+                                                                className="h-2.5 w-3/4 bg-muted-foreground/15 animate-pulse rounded-full"
+                                                                style={{ animationDelay: `${i * 120}ms` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <StyleCarousel
+                                                styles={[...savedCustomStyles, ...renderingStyles]} selectedId={selectedStyle?.id ?? null} pendingStyles={[]}
+                                                onSelect={(style) => { setSelectedStyle(style); setPromptText(style.prompt); }}
+                                                onDeselect={() => setSelectedStyle(null)}
+                                                onClone={() => router.push("/clone")}
+                                            />
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -384,6 +456,15 @@ function RenderPageContent() {
                                     placeholder="Name this render…"
                                 />
                                 <div className="flex items-center gap-1">
+                                    {referenceImages.length > 0 && (
+                                        <button
+                                            onClick={() => setRefsModalOpen(true)}
+                                            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-2 rounded-lg hover:bg-accent"
+                                        >
+                                            <Images className="w-4 h-4" />
+                                            References
+                                        </button>
+                                    )}
                                     <button
                                         onClick={async () => {
                                             if (!renderedImageUrl) return;
@@ -432,10 +513,21 @@ function RenderPageContent() {
                             </div>
                             <div className="max-w-2xl mx-auto w-full space-y-4">
                                 {originalImageUrl ? (
-                                    <ImageCompareSlider originalUrl={originalImageUrl} renderedUrl={renderedImageUrl} initialPosition={0} />
+                                    <ImageCompareSlider
+                                        originalUrl={originalImageUrl}
+                                        renderedUrl={renderedImageUrl}
+                                        initialPosition={0}
+                                        onRenderedLoad={() => setIsLoadingRender(false)}
+                                    />
                                 ) : (
                                     <div className="rounded-xl overflow-hidden border border-border shadow-lg bg-card">
-                                        <img src={renderedImageUrl} alt="Rendered floor plan" className="w-full block" />
+                                        <img
+                                            src={renderedImageUrl}
+                                            alt="Rendered floor plan"
+                                            className="w-full block"
+                                            onLoad={() => setIsLoadingRender(false)}
+                                            onError={() => setIsLoadingRender(false)}
+                                        />
                                     </div>
                                 )}
                             </div>
@@ -460,9 +552,32 @@ function RenderPageContent() {
                                         <ThumbsDown className="w-4 h-4" />
                                     </button>
                                 </div>
-                                <button onClick={handleReset} className="w-full h-11 rounded-xl border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors font-medium">
-                                    New Render
+                                {/* Save Style — primary CTA */}
+                                <button
+                                    onClick={() => setSaveStyleModalOpen(true)}
+                                    className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <Bookmark className="w-4 h-4" /> Save Style
                                 </button>
+                                {/* More options dropdown */}
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <button className="w-full h-11 rounded-xl border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors font-medium flex items-center justify-center gap-2">
+                                            More options <MoreVertical className="w-3.5 h-3.5" />
+                                        </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="center" className="w-48">
+                                        <DropdownMenuItem className="gap-2" onClick={handleReset}>
+                                            <ArrowLeft className="w-4 h-4" /> New Render
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                            className="text-destructive focus:text-destructive focus:bg-destructive/10 gap-2"
+                                            onClick={handleDeleteRender}
+                                        >
+                                            <Trash2 className="w-4 h-4" /> Delete render
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             </div>
                         </motion.div>
                     )}
@@ -471,6 +586,69 @@ function RenderPageContent() {
 
             <AuthModal open={phase === "authRequired"} onAuth={handleAuth} isCloneMode={false} />
             <FeedbackModal open={feedbackModalOpen} onClose={() => setFeedbackModalOpen(false)} renderId={currentRenderId} />
+
+            {/* References Modal */}
+            <AnimatePresence>
+                {refsModalOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+                        onClick={() => setRefsModalOpen(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="bg-background rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+                        >
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                                <div className="flex items-center gap-2.5">
+                                    <Images className="w-5 h-5 text-muted-foreground" />
+                                    <span className="font-semibold text-base">Reference images · {referenceImages.length}</span>
+                                </div>
+                                <button
+                                    onClick={() => setRefsModalOpen(false)}
+                                    className="w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="p-5 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
+                                {referenceImages.map((src, i) => (
+                                    <div key={i} className="aspect-square rounded-xl overflow-hidden bg-muted border border-border">
+                                        <img src={src} alt={`Reference ${i + 1}`} className="w-full h-full object-cover" />
+                                    </div>
+                                ))}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <SaveStyleModal
+                open={saveStyleModalOpen}
+                referencePreviews={referenceImages}
+                renderedImageUrl={renderedImageUrl}
+                onClose={() => setSaveStyleModalOpen(false)}
+                onSave={async (name, thumbnailUrl) => {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session) return;
+                    await (supabase.from as any)("style_requests").insert({
+                        user_id: session.user.id,
+                        title: name,
+                        sample_urls: [thumbnailUrl],
+                        status: "saved",
+                    });
+                    setSaveStyleModalOpen(false);
+                    toast.success(`"${name}" saved to your styles!`);
+                    // Immediately refresh the style carousel so the new style appears
+                    refreshSavedStyles(session.user.id);
+                }}
+            />
         </div>
     );
 }

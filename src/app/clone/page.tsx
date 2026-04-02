@@ -2,8 +2,15 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Download, ImagePlus, X, CheckCircle2, Menu } from "lucide-react";
+import { Home, Download, ImagePlus, X, CheckCircle2, AlertTriangle, CircleCheck, Menu, Images, ArrowLeft, Trash2, MoreVertical, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useSidebar } from "@/lib/sidebar-context";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { FloorPlanUpload } from "@/components/FloorPlanUpload";
 import { PdfPagePicker } from "@/components/PdfPagePicker";
 import { AuthModal } from "@/components/AuthModal";
@@ -17,7 +24,7 @@ import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
 import { getRedirectUrl } from "@/lib/auth";
 
-const MAX_REFS = 1;
+const MAX_REFS = 10;
 
 async function fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -29,33 +36,63 @@ async function fileToBase64(file: File): Promise<string> {
 }
 
 function QualityMeter({ count }: { count: number }) {
-    const pct = Math.round((count / MAX_REFS) * 100);
     if (count === 0) return null;
-    const label = "Style reference ready";
-    const color = "bg-emerald-500";
-    const Icon = CheckCircle2;
-    const tip = "The AI will extract the full visual style from this image and apply it to your floor plan.";
+    const pct = Math.round((count / MAX_REFS) * 100);
+
+    // Tier definitions matching the reference design
+    const tier =
+        count >= 8 ? {
+            label: "Excellent accuracy",
+            barColor: "bg-emerald-500",
+            iconColor: "text-emerald-500",
+            Icon: CircleCheck,
+            tip: "Perfect! The AI has plenty of references to nail your style.",
+        } : count >= 6 ? {
+            label: "Good accuracy",
+            barColor: "bg-blue-500",
+            iconColor: "text-blue-500",
+            Icon: CircleCheck,
+            tip: "Nice! The AI has enough data to capture your style well.",
+        } : count >= 3 ? {
+            label: "Medium accuracy",
+            barColor: "bg-orange-500",
+            iconColor: "text-orange-500",
+            Icon: AlertTriangle,
+            tip: "Getting better! More images improve style accuracy.",
+        } : {
+            label: "Low accuracy",
+            barColor: "bg-red-500",
+            iconColor: "text-red-500",
+            Icon: AlertTriangle,
+            tip: "Add more references for better results.",
+        };
+
     return (
         <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="space-y-1.5">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                    <Icon className="w-3.5 h-3.5 text-emerald-500" />
-                    <span className="text-xs font-semibold text-foreground">{label}</span>
+                    <tier.Icon className={`w-3.5 h-3.5 ${tier.iconColor}`} />
+                    <span className="text-xs font-semibold text-foreground">{tier.label}</span>
                 </div>
                 <span className="text-xs text-muted-foreground">{count}/{MAX_REFS} images</span>
             </div>
             <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                <motion.div className={`h-full rounded-full ${color}`} initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ type: "spring", damping: 20, stiffness: 200 }} />
+                <motion.div
+                    className={`h-full rounded-full ${tier.barColor}`}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${pct}%` }}
+                    transition={{ type: "spring", damping: 20, stiffness: 200 }}
+                />
             </div>
-            <p className="text-[11px] text-muted-foreground leading-tight">{tip}</p>
+            <p className="text-[11px] text-muted-foreground leading-tight">{tier.tip}</p>
         </motion.div>
     );
 }
 
 export default function ClonePage() {
     const router = useRouter();
+    const { openOverlay } = useSidebar();
     const [isLoggedIn, setIsLoggedIn] = useState(false);
-    const [mobileOpen, setMobileOpen] = useState(false);
 
     const [refs, setRefs] = useState<{ file: File; preview: string; base64: string }[]>([]);
     const [floorPlanFile, setFloorPlanFile] = useState<File | null>(null);
@@ -70,9 +107,9 @@ export default function ClonePage() {
     const [originalImageUrl, setOriginalImageUrl] = useState<string | null>(null);
     const [currentRenderId, setCurrentRenderId] = useState<string | null>(null);
     const [renderName, setRenderName] = useState<string>("");
-    const [isGenerating, setIsGenerating] = useState(false);
     const [shouldAutoRender, setShouldAutoRender] = useState(false);
     const [saveStyleModalOpen, setSaveStyleModalOpen] = useState(false);
+    const [refsModalOpen, setRefsModalOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const hasManuallyLoggedOut = useRef(false);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -145,10 +182,10 @@ export default function ClonePage() {
     const generateRender = useCallback(async (base64?: string) => {
         const currentBase64 = base64 || floorPlanBase64;
         if (!currentBase64 || refs.length === 0) return;
-        setPhase("rendering"); setIsGenerating(true);
+        setPhase("rendering");
         try {
             const { data: { session } } = await supabase.auth.getSession();
-            if (!session) { setPhase("authRequired"); setIsGenerating(false); return; }
+            if (!session) { setPhase("authRequired"); return; }
             const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/render-floor-plan`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
@@ -173,11 +210,11 @@ export default function ClonePage() {
                 }
             }
             setRenderName("Cloned Style Render");
-            setPhase("results"); setIsGenerating(false);
+            setPhase("results");
             setTimeout(() => setSaveStyleModalOpen(true), 800);
         } catch (e: any) {
             toast.error(e.message || "Failed to generate rendering. Please try again.");
-            setPhase("workspace"); setIsGenerating(false);
+            setPhase("workspace");
         }
     }, [floorPlanBase64, refs, floorPlanFile]);
 
@@ -229,9 +266,17 @@ export default function ClonePage() {
     return (
         <div className="min-h-screen flex flex-col">
             <header className="border-b border-border px-4 sm:px-6 py-4 flex items-center justify-between shrink-0 sticky top-0 z-30 bg-background">
-                <div className="flex items-center gap-3 h-8">
+                <div className="flex items-center gap-2 h-8">
+                    {isLoggedIn && (
+                        <button
+                            onClick={() => openOverlay()}
+                            className="flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                        >
+                            <Menu className="w-4 h-4" />
+                        </button>
+                    )}
                     <button onClick={() => router.push("/")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
-                        <ArrowLeft className="w-4 h-4" />
+                        <Home className="w-4 h-4" />
                     </button>
                     <span className="text-base font-display font-bold tracking-tight text-foreground">
                         {phase === "results" && renderName ? renderName : "Clone a Style"}
@@ -253,11 +298,6 @@ export default function ClonePage() {
                                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
                             </svg>
                             Sign in
-                        </button>
-                    )}
-                    {isLoggedIn && (
-                        <button onClick={() => setMobileOpen(true)} className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-                            <Menu className="w-5 h-5" />
                         </button>
                     )}
                 </div>
@@ -346,19 +386,49 @@ export default function ClonePage() {
                                     className="font-display font-bold text-foreground text-lg bg-transparent border-none outline-none focus:underline decoration-dotted underline-offset-4 truncate max-w-[180px] sm:max-w-xs"
                                     placeholder="Name this render…"
                                 />
-                                <button
-                                    onClick={async () => {
-                                        if (!renderedImageUrl) return;
-                                        try {
-                                            const res = await fetch(renderedImageUrl); const blob = await res.blob();
-                                            const url = URL.createObjectURL(blob); const a = document.createElement("a");
-                                            a.href = url; a.download = `clone_render.png`; a.click(); URL.revokeObjectURL(url);
-                                        } catch { toast.error("Failed to download image."); }
-                                    }}
-                                    className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors px-3 py-2 rounded-lg hover:bg-primary/10"
-                                >
-                                    <Download className="w-4 h-4" /> Download
-                                </button>
+                                <div className="flex items-center gap-1">
+                                    {refs.length > 0 && (
+                                        <button
+                                            onClick={() => setRefsModalOpen(true)}
+                                            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-2 rounded-lg hover:bg-accent"
+                                        >
+                                            <Images className="w-4 h-4" />
+                                            References
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={async () => {
+                                            if (!renderedImageUrl) return;
+                                            try {
+                                                const res = await fetch(renderedImageUrl); const blob = await res.blob();
+                                                const url = URL.createObjectURL(blob); const a = document.createElement("a");
+                                                a.href = url; a.download = `clone_render.png`; a.click(); URL.revokeObjectURL(url);
+                                            } catch { toast.error("Failed to download image."); }
+                                        }}
+                                        className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors px-3 py-2 rounded-lg hover:bg-primary/10"
+                                    >
+                                        <Download className="w-4 h-4" /> Download
+                                    </button>
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <button className="flex items-center justify-center w-9 h-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+                                                <MoreVertical className="w-4 h-4" />
+                                            </button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            <DropdownMenuItem
+                                                className="text-destructive focus:text-destructive focus:bg-destructive/10 gap-2"
+                                                onClick={async () => {
+                                                    if (!currentRenderId) return;
+                                                    const { error } = await supabase.from("renders").delete().eq("id", currentRenderId);
+                                                    if (error) toast.error("Failed to delete render."); else { toast.success("Render deleted."); handleReset(); }
+                                                }}
+                                            >
+                                                <Trash2 className="w-4 h-4" /> Delete render
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </div>
                             </div>
                             <div className="max-w-2xl mx-auto w-full space-y-4">
                                 {originalImageUrl ? (
@@ -369,10 +439,43 @@ export default function ClonePage() {
                                     </div>
                                 )}
                             </div>
-                            <div className="max-w-2xl mx-auto w-full pt-5 pb-1">
-                                <button onClick={handleReset} className="w-full h-11 rounded-xl border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors font-medium">
-                                    New Render
+                            <div className="max-w-2xl mx-auto w-full pt-5 pb-1 flex flex-col gap-3">
+                                <button
+                                    onClick={() => {
+                                        if (!renderedImageUrl) return;
+                                        sessionStorage.setItem("editRenderPreload", JSON.stringify({
+                                            imageUrl: renderedImageUrl,
+                                            fileName: renderName ? `${renderName}.png` : "clone_render.png",
+                                            source: "rendered",
+                                        }));
+                                        router.push("/edit");
+                                    }}
+                                    className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <Pencil className="w-4 h-4" /> Edit This Render
                                 </button>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <button className="w-full h-11 rounded-xl border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors font-medium flex items-center justify-center gap-2">
+                                            More options <MoreVertical className="w-3.5 h-3.5" />
+                                        </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="center" className="w-48">
+                                        <DropdownMenuItem className="gap-2" onClick={handleReset}>
+                                            <ArrowLeft className="w-4 h-4" /> New Render
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                            className="text-destructive focus:text-destructive focus:bg-destructive/10 gap-2"
+                                            onClick={async () => {
+                                                if (!currentRenderId) return;
+                                                const { error } = await supabase.from("renders").delete().eq("id", currentRenderId);
+                                                if (error) toast.error("Failed to delete render."); else { toast.success("Render deleted."); handleReset(); }
+                                            }}
+                                        >
+                                            <Trash2 className="w-4 h-4" /> Delete render
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             </div>
                         </motion.div>
                     )}
@@ -380,6 +483,48 @@ export default function ClonePage() {
             </div>
 
             <AuthModal open={phase === "authRequired"} onAuth={handleAuth} isCloneMode={true} />
+
+            {/* References Modal */}
+            <AnimatePresence>
+                {refsModalOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+                        onClick={() => setRefsModalOpen(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="bg-background rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+                        >
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                                <div className="flex items-center gap-2.5">
+                                    <Images className="w-5 h-5 text-muted-foreground" />
+                                    <span className="font-semibold text-base">Reference images · {refs.length}</span>
+                                </div>
+                                <button
+                                    onClick={() => setRefsModalOpen(false)}
+                                    className="w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="p-5 grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
+                                {refs.map((r, i) => (
+                                    <div key={i} className="aspect-square rounded-xl overflow-hidden bg-muted border border-border">
+                                        <img src={r.preview} alt={`Reference ${i + 1}`} className="w-full h-full object-cover" />
+                                    </div>
+                                ))}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
             <SaveStyleModal
                 open={saveStyleModalOpen}
                 referencePreviews={refs.map(r => r.preview)}
