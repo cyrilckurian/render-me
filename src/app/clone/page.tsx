@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Home, Download, ImagePlus, X, CheckCircle2, AlertTriangle, CircleCheck, Menu, Images, ArrowLeft, Trash2, MoreVertical, Pencil } from "lucide-react";
+import { Home, Download, ImagePlus, X, CheckCircle2, AlertTriangle, CircleCheck, Bookmark, Menu, Images, ArrowLeft, Trash2, MoreVertical } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useSidebar } from "@/lib/sidebar-context";
 import {
@@ -441,18 +441,10 @@ export default function ClonePage() {
                             </div>
                             <div className="max-w-2xl mx-auto w-full pt-5 pb-1 flex flex-col gap-3">
                                 <button
-                                    onClick={() => {
-                                        if (!renderedImageUrl) return;
-                                        sessionStorage.setItem("editRenderPreload", JSON.stringify({
-                                            imageUrl: renderedImageUrl,
-                                            fileName: renderName ? `${renderName}.png` : "clone_render.png",
-                                            source: "rendered",
-                                        }));
-                                        router.push("/edit");
-                                    }}
+                                    onClick={() => setSaveStyleModalOpen(true)}
                                     className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
                                 >
-                                    <Pencil className="w-4 h-4" /> Edit This Render
+                                    <Bookmark className="w-4 h-4" /> Save Style
                                 </button>
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
