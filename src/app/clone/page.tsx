@@ -522,10 +522,23 @@ export default function ClonePage() {
                 referencePreviews={refs.map(r => r.preview)}
                 renderedImageUrl={renderedImageUrl}
                 onClose={() => setSaveStyleModalOpen(false)}
-                onSave={async (name, thumbnailUrl) => {
+                onSave={async (name) => {
                     const { data: { session } } = await supabase.auth.getSession();
                     if (!session) return;
-                    await supabase.from("style_requests").insert({ user_id: session.user.id, title: name, sample_urls: [thumbnailUrl], status: "saved" });
+                    // Use storage paths from the render record (never expire, proper format for re-rendering)
+                    let sampleUrls: string[] = [];
+                    if (currentRenderId) {
+                        const { data: render } = await supabase.from("renders" as any)
+                            .select("rendered_image_path, reference_image_paths")
+                            .eq("id", currentRenderId)
+                            .single();
+                        if ((render as any)?.reference_image_paths?.length) {
+                            sampleUrls = (render as any).reference_image_paths;
+                        } else if ((render as any)?.rendered_image_path) {
+                            sampleUrls = [(render as any).rendered_image_path];
+                        }
+                    }
+                    await supabase.from("style_requests" as any).insert({ user_id: session.user.id, title: name, sample_urls: sampleUrls, status: "saved" });
                     setSaveStyleModalOpen(false);
                     toast.success(`"${name}" saved to your styles!`);
                 }}

@@ -39,14 +39,14 @@ serve(async (req) => {
 
     const { floorPlanBase64, prompt, styleId, styleName, floorPlanName, referenceImages } = await req.json();
 
-    if (!floorPlanBase64 || !prompt) {
+    const isCloneStyle = typeof prompt === "string" && prompt.startsWith("__CLONE_STYLE__") && Array.isArray(referenceImages) && referenceImages.length > 0;
+
+    if (!floorPlanBase64 || (!prompt && !isCloneStyle)) {
       return new Response(JSON.stringify({ error: "Missing floor plan or prompt" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const isCloneStyle = prompt.startsWith("__CLONE_STYLE__") && Array.isArray(referenceImages) && referenceImages.length > 0;
 
     const VERTEX_PROJECT_ID = Deno.env.get("VERTEX_PROJECT_ID") || "YOUR_PROJECT_ID";
     const VERTEX_LOCATION = Deno.env.get("VERTEX_LOCATION") || "us-central1";

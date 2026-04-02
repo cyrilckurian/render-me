@@ -210,6 +210,30 @@ function RenderPageContent() {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) { setPhase("authRequired"); return; }
 
+            // Helper: convert any URL/path → proper data:... base64 string for Gemini
+            const toBase64DataUrl = async (path: string): Promise<string | null> => {
+                try {
+                    if (path.startsWith("data:")) return path; // already correct format
+                    let url = path;
+                    if (!path.startsWith("http") && !path.startsWith("blob:")) {
+                        // It's a Supabase storage path — get a signed URL first
+                        const { data: signed } = await supabase.storage.from("floor-plans").createSignedUrl(path, 300);
+                        if (!signed?.signedUrl) return null;
+                        url = signed.signedUrl;
+                    }
+                    // Fetch and convert to data: URL so edge fn serializeParts works
+                    const res = await fetch(url);
+                    if (!res.ok) return null;
+                    const blob = await res.blob();
+                    return new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result as string);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
+                    });
+                } catch { return null; }
+            };
+
             // For custom (clone) styles, fetch reference images from storage
             let referenceImages: string[] | undefined;
             let effectivePrompt = currentPrompt;
@@ -221,19 +245,7 @@ function RenderPageContent() {
                     .single();
                 if (styleData?.sample_urls?.length) {
                     const refs = await Promise.all(
-                        (styleData.sample_urls as string[]).map(async (path) => {
-                            if (path.startsWith("data:") || path.startsWith("http")) return path;
-                            const { data: signed } = await supabase.storage.from("floor-plans").createSignedUrl(path, 300);
-                            if (!signed?.signedUrl) return null;
-                            // Fetch and convert to base64
-                            const res = await fetch(signed.signedUrl);
-                            const blob = await res.blob();
-                            return new Promise<string>((resolve) => {
-                                const reader = new FileReader();
-                                reader.onload = () => resolve(reader.result as string);
-                                reader.readAsDataURL(blob);
-                            });
-                        })
+                        (styleData.sample_urls as string[]).map(toBase64DataUrl)
                     );
                     referenceImages = refs.filter(Boolean) as string[];
                     setReferenceImages(referenceImages);
@@ -634,18 +646,30 @@ function RenderPageContent() {
                 referencePreviews={referenceImages}
                 renderedImageUrl={renderedImageUrl}
                 onClose={() => setSaveStyleModalOpen(false)}
-                onSave={async (name, thumbnailUrl) => {
+                onSave={async (name) => {
                     const { data: { session } } = await supabase.auth.getSession();
                     if (!session) return;
+                    // Use storage paths from the render record (never expire, proper format for re-rendering)
+                    let sampleUrls: string[] = [];
+                    if (currentRenderId) {
+                        const { data: render } = await (supabase.from as any)("renders")
+                            .select("rendered_image_path, reference_image_paths")
+                            .eq("id", currentRenderId)
+                            .single();
+                        if (render?.reference_image_paths?.length) {
+                            sampleUrls = render.reference_image_paths;  // clone render — use original refs
+                        } else if (render?.rendered_image_path) {
+                            sampleUrls = [render.rendered_image_path];  // regular render — use output as style ref
+                        }
+                    }
                     await (supabase.from as any)("style_requests").insert({
                         user_id: session.user.id,
                         title: name,
-                        sample_urls: [thumbnailUrl],
+                        sample_urls: sampleUrls,
                         status: "saved",
                     });
                     setSaveStyleModalOpen(false);
                     toast.success(`"${name}" saved to your styles!`);
-                    // Immediately refresh the style carousel so the new style appears
                     refreshSavedStyles(session.user.id);
                 }}
             />
