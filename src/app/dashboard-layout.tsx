@@ -14,14 +14,17 @@ export default function DashboardLayout({
 }) {
     const router = useRouter();
     const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [userId, setUserId] = useState<string | null>(null);
+    const [authReady, setAuthReady] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
     const [overlayOpen, setOverlayOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data }) => setIsLoggedIn(!!data.session));
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             setIsLoggedIn(!!session);
+            setUserId(session?.user?.id ?? null);
+            if (event === "INITIAL_SESSION") setAuthReady(true);
             if (!session) { setMobileOpen(false); setOverlayOpen(false); }
         });
         return () => subscription.unsubscribe();
@@ -39,7 +42,7 @@ export default function DashboardLayout({
     }, [router]);
 
     return (
-        <SidebarContext.Provider value={{ openOverlay: () => setOverlayOpen(true), isLoggedIn }}>
+        <SidebarContext.Provider value={{ openOverlay: () => setOverlayOpen(true), isLoggedIn, userId, authReady, setIsGenerating }}>
             <div className="min-h-screen bg-background flex flex-col w-full">
                 {isLoggedIn && (
                     <RenderHistory

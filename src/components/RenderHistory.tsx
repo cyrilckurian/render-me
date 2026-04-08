@@ -159,29 +159,23 @@ function Content({
                   />
                 )}
                 {renders.map((render) => {
-                  // Use thumbnail for tile display, fall back to full render
                   const thumbPath = render.thumbnail_path;
+                  const thumbnailReady = !!thumbPath;
                   const imgSrc = thumbPath && isStoragePath(thumbPath)
                     ? signedUrls[thumbPath]
-                    : render.rendered_image_path
-                      ? isStoragePath(render.rendered_image_path)
-                        ? signedUrls[render.rendered_image_path]
-                        : render.rendered_image_path
-                      : null;
+                    : null;
                   return (
                     <button
                       key={render.id}
                       onClick={() => {
-                        const resolvedPath = render.rendered_image_path;
-                        const resolvedUrl = resolvedPath && isStoragePath(resolvedPath)
-                          ? signedUrls[resolvedPath] ?? null
-                          : resolvedPath;
-                        onSelectRender({ ...render, rendered_image_path: resolvedUrl });
+                        onSelectRender(render);
                         onMobileClose?.();
                       }}
                       className="relative aspect-square rounded-lg overflow-hidden bg-sidebar-accent border border-sidebar-border group"
                     >
-                      {imgSrc ? (
+                      {!thumbnailReady ? (
+                        <div className="w-full h-full animate-pulse bg-sidebar-accent" />
+                      ) : imgSrc ? (
                         <img src={imgSrc} alt={render.style_name} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
@@ -358,6 +352,7 @@ export function RenderHistory({
   const router = useRouter();
   const [renders, setRenders] = useState<Render[]>([]);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const signedUrlsRef = useState<Set<string>>(() => new Set())[0];
   const [loading, setLoading] = useState(true);
 
   // Edits (from Edit a Render workflow → compositions table)
@@ -371,30 +366,18 @@ export function RenderHistory({
   const [composerThumbUrls, setComposerThumbUrls] = useState<Record<string, string>>({});
 
   const generateSignedUrls = async (list: Render[]) => {
-    // For tiles: prefer thumbnail_path (small JPEG), fallback to rendered_image_path
-    const thumbPaths = list
-      .map((r) => r.thumbnail_path && isStoragePath(r.thumbnail_path) ? r.thumbnail_path : null)
-      .filter(Boolean) as string[];
-
-    const fullPaths = list
-      .filter((r) => !r.thumbnail_path && r.rendered_image_path && isStoragePath(r.rendered_image_path))
-      .map((r) => r.rendered_image_path as string);
-
-    const allPaths = [...new Set([...thumbPaths, ...fullPaths])];
+    // Only sign thumbnail_path — rendered_image_path is signed by the render page when needed
+    const newPaths = list
+      .map((r) => r.thumbnail_path)
+      .filter((p): p is string => !!p && isStoragePath(p) && !signedUrlsRef.has(p));
+    const allPaths = [...new Set(newPaths)];
     if (allPaths.length === 0) return;
 
+    allPaths.forEach((p) => signedUrlsRef.add(p));
     const { data } = await supabase.storage.from("floor-plans").createSignedUrls(allPaths, 3600);
     if (data) {
       const map: Record<string, string> = {};
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-      data.forEach((item) => {
-        if (item.signedUrl && item.path) {
-          const fullUrl = item.signedUrl.startsWith("http")
-            ? item.signedUrl
-            : `${supabaseUrl}/storage/v1${item.signedUrl}`;
-          map[item.path] = fullUrl;
-        }
-      });
+      data.forEach((item) => { if (item.signedUrl && item.path) map[item.path] = item.signedUrl; });
       setSignedUrls((prev) => ({ ...prev, ...map }));
     }
   };
@@ -510,7 +493,10 @@ export function RenderHistory({
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "renders" }, (payload) => {
         const updated = payload.new as Render;
         setRenders((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-        generateSignedUrls([updated]);
+        // Only sign if thumbnail_path is new (not already signed)
+        if (updated.thumbnail_path && isStoragePath(updated.thumbnail_path) && !signedUrlsRef.has(updated.thumbnail_path)) {
+          generateSignedUrls([updated]);
+        }
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "renders" }, (payload) => {
         const deleted = payload.old as Render;

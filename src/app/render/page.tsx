@@ -30,8 +30,7 @@ import { getRedirectUrl } from "@/lib/auth";
 function RenderPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { openOverlay, isLoggedIn: sidebarLoggedIn } = useSidebar();
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const { openOverlay, isLoggedIn, userId } = useSidebar();
 
     const [floorPlanFile, setFloorPlanFile] = useState<File | null>(null);
     const [floorPlanPreview, setFloorPlanPreview] = useState<string | null>(null);
@@ -57,7 +56,6 @@ function RenderPageContent() {
     const [refsModalOpen, setRefsModalOpen] = useState(false);
     const [saveStyleModalOpen, setSaveStyleModalOpen] = useState(false);
     const [extractedStylePrompt, setExtractedStylePrompt] = useState<string | null>(null);
-    const hasManuallyLoggedOut = useRef(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const PENDING_RENDER_KEY = "pendingRender";
@@ -149,43 +147,56 @@ function RenderPageContent() {
         setStylesLoading(true);
         const { data } = await supabase.from("style_requests").select("id, title, sample_urls, status, style_prompt").eq("user_id", userId).eq("status", "saved");
         if (!data || data.length === 0) { setSavedCustomStyles([]); setStylesLoading(false); return; }
-        const loaded: RenderingStyle[] = await Promise.all(
-            data.map(async (r: any) => {
-                const rawPath = ((r.sample_urls as string[]) || [])[0] ?? "";
-                let image = rawPath;
-                if (rawPath && !rawPath.startsWith("data:") && !rawPath.startsWith("blob:") && !rawPath.startsWith("http")) {
-                    const { data: signed } = await supabase.storage.from("floor-plans").createSignedUrl(rawPath, 3600);
-                    if (signed?.signedUrl) image = signed.signedUrl;
-                }
-                // Use saved style_prompt as the render prompt — avoids re-extraction on each render
-                return { id: r.id, name: r.title, description: "Your saved style", prompt: r.style_prompt || "", image };
-            })
-        );
+
+        // Collect all storage paths that need signing
+        const paths = data.map((r: any) => ((r.sample_urls as string[]) || [])[0] ?? "");
+        const storagePaths = paths.filter(p => p && !p.startsWith("data:") && !p.startsWith("blob:") && !p.startsWith("http"));
+
+        // Sign all URLs in parallel in one batch call
+        const signedMap: Record<string, string> = {};
+        if (storagePaths.length > 0) {
+            const { data: signedList } = await supabase.storage.from("floor-plans").createSignedUrls(storagePaths, 3600);
+            signedList?.forEach(item => { if (item.signedUrl && item.path) signedMap[item.path] = item.signedUrl; });
+        }
+
+        const loaded: RenderingStyle[] = data.map((r: any, i: number) => {
+            const rawPath = paths[i];
+            const image = signedMap[rawPath] || rawPath || "";
+            return { id: r.id, name: r.title, description: "Your saved style", prompt: r.style_prompt || "", image };
+        });
         setSavedCustomStyles(loaded);
         setStylesLoading(false);
     }, []);
 
-    const applySession = useCallback((session: { user: { id: string } } | null) => {
-        if (!session?.user) return;
-        setIsLoggedIn(true);
-        const userId = session.user.id;
-        // Load saved custom styles
-        refreshSavedStyles(userId);
-    }, [refreshSavedStyles]);
-
     useEffect(() => {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            if (hasManuallyLoggedOut.current) return;
-            if (event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
-                if (session?.user) setTimeout(() => applySession(session), 0); else { setIsLoggedIn(false); setStylesLoading(false); }
-            } else if (event === "SIGNED_OUT") { setIsLoggedIn(false); setStylesLoading(false); }
-        });
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            if (!hasManuallyLoggedOut.current && session?.user) applySession(session);
-            else if (!session?.user) setStylesLoading(false);
-        });
-        return () => { subscription.unsubscribe(); };
-    }, [applySession]);
+        let cancelled = false;
+        if (userId) {
+            setStylesLoading(true);
+            supabase.from("style_requests").select("id, title, sample_urls, status, style_prompt").eq("user_id", userId).eq("status", "saved").then(async ({ data }) => {
+                if (cancelled) return;
+                if (!data || data.length === 0) { setSavedCustomStyles([]); setStylesLoading(false); return; }
+                const paths = data.map((r: any) => ((r.sample_urls as string[]) || [])[0] ?? "");
+                const storagePaths = paths.filter((p: string) => p && !p.startsWith("data:") && !p.startsWith("blob:") && !p.startsWith("http"));
+                const signedMap: Record<string, string> = {};
+                if (storagePaths.length > 0) {
+                    const { data: signedList } = await supabase.storage.from("floor-plans").createSignedUrls(storagePaths, 3600);
+                    if (cancelled) return;
+                    signedList?.forEach((item: any) => { if (item.signedUrl && item.path) signedMap[item.path] = item.signedUrl; });
+                }
+                const loaded: RenderingStyle[] = data.map((r: any, i: number) => {
+                    const rawPath = paths[i];
+                    const image = signedMap[rawPath] || rawPath || "";
+                    return { id: r.id, name: r.title, description: "Your saved style", prompt: r.style_prompt || "", image };
+                });
+                setSavedCustomStyles(loaded);
+                setStylesLoading(false);
+            });
+        } else {
+            setSavedCustomStyles([]);
+            setStylesLoading(false);
+        }
+        return () => { cancelled = true; };
+    }, [userId]);
 
     const handleUpload = useCallback(async (file: File) => {
         if (file.size > 5 * 1024 * 1024) { toast.error("File is too large. Please upload a file under 5 MB."); return; }
@@ -242,10 +253,14 @@ function RenderPageContent() {
             if (isCustomStyle && selectedStyle) {
                 const { data: styleData } = await supabase
                     .from("style_requests")
-                    .select("sample_urls")
+                    .select("sample_urls, style_prompt")
                     .eq("id", selectedStyle.id)
                     .single();
-                if (styleData?.sample_urls?.length) {
+                if (styleData?.style_prompt) {
+                    // Saved style prompt exists — skip Step 1 entirely, saves ~10–15s
+                    effectivePrompt = styleData.style_prompt;
+                } else if (styleData?.sample_urls?.length) {
+                    // No saved prompt — fall back to two-step (Step 1 + Step 2)
                     const refs = await Promise.all(
                         (styleData.sample_urls as string[]).map(toBase64DataUrl)
                     );
@@ -268,11 +283,10 @@ function RenderPageContent() {
             if (!response.ok) { const err = await response.json(); throw new Error(err.error || "Failed to generate rendering"); }
             const data = await response.json();
             setRenderedImageUrl(data.renderedBase64 || data.imageUrl);
-            if (data.renderId && data.renderPath) {
+            if (data.renderId) {
                 setCurrentRenderId(data.renderId);
-                const { data: render } = await supabase.from("renders").select("floor_plan_path").eq("id", data.renderId).single();
-                if (render?.floor_plan_path) {
-                    const { data: signed } = await supabase.storage.from("floor-plans").createSignedUrl(render.floor_plan_path, 3600);
+                if (data.originalPath) {
+                    const { data: signed } = await supabase.storage.from("floor-plans").createSignedUrl(data.originalPath, 3600);
                     if (signed?.signedUrl) setOriginalImageUrl(signed.signedUrl);
                 }
             }
@@ -301,7 +315,7 @@ function RenderPageContent() {
         if (supabaseUrl === "https://placeholder.supabase.co" && typeof window !== "undefined") {
             toast.error("Supabase URL is not configured. Please check your Vercel environment variables.");
         }
-    }, [isLoggedIn]);
+    }, []);
 
     const savePendingRender = useCallback((text: string): boolean => {
         if (!floorPlanBase64 || !floorPlanFile) return false;
@@ -312,7 +326,8 @@ function RenderPageContent() {
     }, [floorPlanBase64, floorPlanFile, floorPlanPreview, selectedStyle]);
 
     const handleGenerate = useCallback(() => {
-        if (!promptText) return;
+        const isCustomStyle = selectedStyle && !selectedStyle.prompt;
+        if (!promptText && !isCustomStyle) return;
         if (isLoggedIn) { generateRender(floorPlanBase64 || undefined, promptText); }
         else {
             const saved = savePendingRender(promptText);
@@ -321,9 +336,9 @@ function RenderPageContent() {
                 setTimeout(() => setPhase("authRequired"), 3500);
             }
         }
-    }, [isLoggedIn, floorPlanBase64, promptText, savePendingRender, generateRender]);
+    }, [isLoggedIn, floorPlanBase64, promptText, selectedStyle, savePendingRender, generateRender]);
 
-    const handleAuth = useCallback(() => { hasManuallyLoggedOut.current = false; setIsLoggedIn(true); generateRender(); }, [generateRender]);
+    const handleAuth = useCallback(() => { generateRender(); }, [generateRender]);
 
     const handleReset = useCallback(() => {
         setFloorPlanFile(null); setFloorPlanPreview(null); setFloorPlanBase64(null);
@@ -428,6 +443,18 @@ function RenderPageContent() {
                                                 onSelect={(style) => { setSelectedStyle(style); setPromptText(style.prompt); }}
                                                 onDeselect={() => setSelectedStyle(null)}
                                                 onClone={() => router.push("/clone")}
+                                                onDeleteStyle={async (styleId) => {
+                                                    if (!userId) return;
+                                                    const { error } = await supabase
+                                                        .from("style_requests")
+                                                        .delete()
+                                                        .eq("id", styleId)
+                                                        .eq("user_id", userId);
+                                                    if (error) { toast.error("Failed to delete style."); return; }
+                                                    setSavedCustomStyles(prev => prev.filter(s => s.id !== styleId));
+                                                    if (selectedStyle?.id === styleId) setSelectedStyle(null);
+                                                    toast.success("Style deleted.");
+                                                }}
                                             />
                                         )}
                                     </div>
@@ -554,8 +581,7 @@ function RenderPageContent() {
                                     <button
                                         onClick={async () => {
                                             setThumbsFeedback("up");
-                                            const { data: { session } } = await supabase.auth.getSession();
-                                            await supabase.from("render_feedback" as never).insert({ render_id: currentRenderId, user_id: session?.user?.id || null, rating: "thumbs_up" } as never);
+                                            await supabase.from("render_feedback" as never).insert({ render_id: currentRenderId, user_id: userId, rating: "thumbs_up" } as never);
                                             toast.success("Glad you liked it! 🎉");
                                         }}
                                         className={cn("flex items-center justify-center w-9 h-9 rounded-lg transition-colors", thumbsFeedback === "up" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent")}
@@ -652,8 +678,7 @@ function RenderPageContent() {
                 renderedImageUrl={renderedImageUrl}
                 onClose={() => setSaveStyleModalOpen(false)}
                 onSave={async (name) => {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    if (!session) return;
+                    if (!userId) return;
                     // Prefer extracted style prompt (from clone renders) — gives instant future renders
                     // Fall back to storage paths for regular renders
                     let sampleUrls: string[] = [];
@@ -666,7 +691,7 @@ function RenderPageContent() {
                         else if (render?.rendered_image_path) sampleUrls = [render.rendered_image_path];
                     }
                     await (supabase.from as any)("style_requests").insert({
-                        user_id: session.user.id,
+                        user_id: userId,
                         title: name,
                         sample_urls: sampleUrls,
                         style_prompt: extractedStylePrompt || null,
@@ -674,7 +699,7 @@ function RenderPageContent() {
                     });
                     setSaveStyleModalOpen(false);
                     toast.success(`"${name}" saved to your styles!`);
-                    refreshSavedStyles(session.user.id);
+                    refreshSavedStyles(userId);
                 }}
             />
         </div>

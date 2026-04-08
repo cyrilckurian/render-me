@@ -1,7 +1,13 @@
-import { useRef } from "react";
-import { ChevronLeft, ChevronRight, Hourglass, Wand2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Hourglass, Wand2, MoreVertical, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import type { RenderingStyle } from "@/data/renderingStyles";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export interface PendingStyle {
   id: string;
@@ -16,10 +22,12 @@ interface StyleCarouselProps {
   onSelect: (style: RenderingStyle) => void;
   onDeselect: () => void;
   onClone: () => void;
+  onDeleteStyle?: (styleId: string) => void;
 }
 
-export function StyleCarousel({ styles, selectedId, pendingStyles = [], onSelect, onDeselect, onClone }: StyleCarouselProps) {
+export function StyleCarousel({ styles, selectedId, pendingStyles = [], onSelect, onDeselect, onClone, onDeleteStyle }: StyleCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   const scroll = (dir: "left" | "right") => {
     if (scrollRef.current) {
@@ -49,41 +57,66 @@ export function StyleCarousel({ styles, selectedId, pendingStyles = [], onSelect
         className="flex gap-2 overflow-x-auto scrollbar-hide py-2 px-1 pb-4 sm:pb-2"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
-        {styles.map((style) => (
-          <motion.button
-            key={style.id}
-            whileHover={{ y: -3 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={() => selectedId === style.id ? onDeselect() : onSelect(style)}
-          className={`
-              flex-shrink-0 w-[calc((100vw-2.5rem)/2.5)] sm:w-28 rounded-lg overflow-hidden border-2 transition-colors text-left
-              ${selectedId === style.id
-                ? "border-primary shadow-md"
-                : "border-transparent hover:border-border"
-              }
-            `}
-          >
-            <div className="aspect-square overflow-hidden bg-muted relative">
-              <img
-                src={style.image}
-                alt={style.name}
-                className="w-full h-full object-cover"
-              />
-              {selectedId === style.id && (
-                <div className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-foreground flex items-center justify-center shadow-lg">
-                  <svg viewBox="0 0 12 12" className="w-3.5 h-3.5" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="2,6 5,9 10,3" />
-                  </svg>
+        {styles.map((style) => {
+          const isUserStyle = style.prompt === "";
+          return (
+            <motion.div
+              key={style.id}
+              whileHover={{ y: -3 }}
+              className={`
+                relative flex-shrink-0 w-[calc((100vw-2.5rem)/2.5)] sm:w-28 rounded-lg overflow-hidden border-2 transition-colors
+                ${selectedId === style.id ? "border-primary shadow-md" : "border-transparent hover:border-border"}
+              `}
+            >
+              {/* Image — clickable to select */}
+              <button
+                className="w-full text-left"
+                onClick={() => selectedId === style.id ? onDeselect() : onSelect(style)}
+              >
+                <div className="aspect-square overflow-hidden bg-muted relative">
+                  {style.image ? (
+                    <img src={style.image} alt={style.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full animate-pulse bg-muted-foreground/10" />
+                  )}
+                  {selectedId === style.id && (
+                    <div className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-foreground flex items-center justify-center shadow-lg">
+                      <svg viewBox="0 0 12 12" className="w-3.5 h-3.5" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="2,6 5,9 10,3" />
+                      </svg>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <div className="px-2 py-1.5 bg-card">
-              <p className="font-display font-semibold text-xs text-foreground truncate">
-                {style.name}
-              </p>
-            </div>
-          </motion.button>
-        ))}
+              </button>
+              {/* Label row — outside the button to avoid nested button error */}
+              <div className="px-2 h-7 bg-card flex items-center justify-between gap-1">
+                <button
+                  className="flex-1 min-w-0 text-left"
+                  onClick={() => selectedId === style.id ? onDeselect() : onSelect(style)}
+                >
+                  <p className="font-display font-semibold text-xs text-foreground truncate">{style.name}</p>
+                </button>
+                {isUserStyle && onDeleteStyle && (
+                  <DropdownMenu open={openMenuId === style.id} onOpenChange={(open) => setOpenMenuId(open ? style.id : null)}>
+                    <DropdownMenuTrigger asChild>
+                      <button className="shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-accent transition-colors">
+                        <MoreVertical className="w-3 h-3 text-muted-foreground" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" side="top">
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive focus:bg-destructive/10 gap-2 text-xs"
+                        onClick={() => { onDeleteStyle(style.id); setOpenMenuId(null); }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Delete style
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            </motion.div>
+          );
+        })}
 
         {/* Pending custom styles */}
         {pendingStyles.map((ps) => (

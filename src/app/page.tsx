@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { PageLoader } from "@/components/PageLoader";
@@ -19,21 +19,7 @@ import { useSidebar } from "@/lib/sidebar-context";
 export default function Home() {
   const router = useRouter();
   const { openOverlay } = useSidebar();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [authLoading, setAuthLoading] = useState(true);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setIsLoggedIn(!!data.session);
-      setAuthLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      setIsLoggedIn(!!session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const { isLoggedIn, authReady } = useSidebar();
 
   const handleSignIn = async () => {
     // Switching to standard Supabase OAuth
@@ -71,7 +57,7 @@ export default function Home() {
     }
   };
 
-  if (authLoading) return <PageLoader />;
+  if (!authReady) return <PageLoader />;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -84,7 +70,7 @@ export default function Home() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          {!authLoading && !isLoggedIn && (
+          {!isLoggedIn && (
             <button
               onClick={handleSignIn}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium transition-colors"

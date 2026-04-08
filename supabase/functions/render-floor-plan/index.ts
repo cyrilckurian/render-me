@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Image } from "https://deno.land/x/imagescript@1.2.15/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -234,7 +233,7 @@ RULES:
       });
     }
 
-    // Upload to storage
+    // Upload original floor plan
     const originalBase64 = floorPlanBase64.replace(/^data:image\/\w+;base64,/, "");
     const originalBytes = Uint8Array.from(atob(originalBase64), (c) => c.charCodeAt(0));
     const originalExt = floorPlanName?.split(".").pop() || "png";
@@ -247,7 +246,7 @@ RULES:
     );
 
     // Ensure bucket exists (safeguard)
-    const { data: bucket, error: bucketError } = await serviceClient.storage.getBucket("floor-plans");
+    const { error: bucketError } = await serviceClient.storage.getBucket("floor-plans");
     if (bucketError && bucketError.message.includes("not found")) {
       await serviceClient.storage.createBucket("floor-plans", { public: false });
     }
@@ -255,7 +254,6 @@ RULES:
     const { error: originalUploadError } = await serviceClient.storage
       .from("floor-plans")
       .upload(`originals/${originalFileName}`, originalBytes, { contentType: originalContentType });
-
     if (originalUploadError) {
       console.error("Original upload error:", originalUploadError.message);
     }
@@ -280,45 +278,28 @@ RULES:
       });
     }
 
-    // Generate and upload thumbnail (150px wide JPEG q50) in the same folder
-    let thumbnailStoragePath: string | null = null;
-    try {
-      const img = await Image.decode(imageBytes);
-      const thumbWidth = 150;
-      const thumbHeight = Math.round((img.height / img.width) * thumbWidth);
-      const thumb = img.resize(thumbWidth, thumbHeight);
-      const thumbBytes = await thumb.encodeJPEG(50);
-      thumbnailStoragePath = `${renderFolder}/thumbnail.jpg`;
-      const { error: thumbError } = await serviceClient.storage
-        .from("floor-plans")
-        .upload(thumbnailStoragePath, thumbBytes, { contentType: "image/jpeg" });
-      if (thumbError) {
-        console.error("Thumbnail upload error:", thumbError.message);
-        thumbnailStoragePath = null;
-      }
-    } catch (thumbErr) {
-      console.error("Thumbnail generation error:", thumbErr);
-      thumbnailStoragePath = null;
-    }
 
-    // Upload reference images to storage (for clone-style renders)
+    // Upload reference images to storage in parallel (clone-style renders)
     const referenceStoragePaths: string[] = [];
     if (isCloneStyle && Array.isArray(referenceImages) && referenceImages.length > 0) {
-      for (let i = 0; i < referenceImages.length; i++) {
-        try {
-          const dataUrl = referenceImages[i] as string;
-          const base64Part = dataUrl.split(",")[1];
-          if (!base64Part) continue;
-          const refBytes = Uint8Array.from(atob(base64Part), (c) => c.charCodeAt(0));
-          const refPath = `references/${user.id}/${renderUUID}/ref_${i}.png`;
-          const { error: refErr } = await serviceClient.storage
-            .from("floor-plans")
-            .upload(refPath, refBytes, { contentType: "image/png" });
-          if (!refErr) referenceStoragePaths.push(refPath);
-        } catch (e) {
-          console.error(`Ref image ${i} upload error:`, e);
-        }
-      }
+      const uploadResults = await Promise.all(
+        referenceImages.map(async (dataUrl: string, i: number) => {
+          try {
+            const base64Part = dataUrl.split(",")[1];
+            if (!base64Part) return null;
+            const refBytes = Uint8Array.from(atob(base64Part), (c) => c.charCodeAt(0));
+            const refPath = `references/${user.id}/${renderUUID}/ref_${i}.png`;
+            const { error: refErr } = await serviceClient.storage
+              .from("floor-plans")
+              .upload(refPath, refBytes, { contentType: "image/png" });
+            return refErr ? null : refPath;
+          } catch (e) {
+            console.error(`Ref image ${i} upload error:`, e);
+            return null;
+          }
+        })
+      );
+      referenceStoragePaths.push(...uploadResults.filter((p): p is string => p !== null));
     }
 
     // Save render record
@@ -330,12 +311,24 @@ RULES:
       floor_plan_name: floorPlanName || "floor-plan.png",
       floor_plan_path: originalStoragePath,
       rendered_image_path: renderStoragePath,
-      ...(thumbnailStoragePath ? { thumbnail_path: thumbnailStoragePath } : {}),
+
       ...(referenceStoragePaths.length > 0 ? { reference_image_paths: referenceStoragePaths } : {}),
     }).select("id").single();
 
     if (insertError) {
       console.error("Insert error:", insertError.message);
+    }
+
+    // Fire thumbnail generation in a separate isolated function — no await (fire and forget)
+    if (insertData?.id) {
+      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-thumbnail`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({ renderId: insertData.id, renderPath: renderStoragePath }),
+      }).catch((e) => console.error("Failed to trigger thumbnail generation:", e));
     }
 
     // Generate a short-lived signed URL for the immediate response
@@ -349,6 +342,7 @@ RULES:
         renderedBase64: generatedImage,
         renderId: insertData?.id ?? null,
         renderPath: renderStoragePath,
+        originalPath: originalStoragePath,
         extractedStylePrompt: isCloneStyle ? styleDescription : null,
       }),
       {

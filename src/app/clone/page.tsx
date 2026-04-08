@@ -91,8 +91,7 @@ function QualityMeter({ count }: { count: number }) {
 
 export default function ClonePage() {
     const router = useRouter();
-    const { openOverlay } = useSidebar();
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const { openOverlay, isLoggedIn, userId } = useSidebar();
 
     const [refs, setRefs] = useState<{ file: File; preview: string; base64: string }[]>([]);
     const [floorPlanFile, setFloorPlanFile] = useState<File | null>(null);
@@ -112,20 +111,10 @@ export default function ClonePage() {
     const [refsModalOpen, setRefsModalOpen] = useState(false);
     const [extractedStylePrompt, setExtractedStylePrompt] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const hasManuallyLoggedOut = useRef(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { scrollRef.current?.scrollTo({ top: 0 }); }, [phase]);
 
-    useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setIsLoggedIn(!!session);
-        });
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-            setIsLoggedIn(!!session);
-        });
-        return () => subscription.unsubscribe();
-    }, []);
 
     useEffect(() => {
         const raw = sessionStorage.getItem(PENDING_CLONE_KEY);
@@ -202,15 +191,11 @@ export default function ClonePage() {
             setRenderedImageUrl(data.renderedBase64 || data.imageUrl);
             if (data.renderId) {
                 setCurrentRenderId(data.renderId);
-                if (data.renderPath) {
-                    const { data: render } = await supabase.from("renders").select("floor_plan_path").eq("id", data.renderId).single();
-                    if (render?.floor_plan_path) {
-                        const { data: signed } = await supabase.storage.from("floor-plans").createSignedUrl(render.floor_plan_path, 3600);
-                        if (signed?.signedUrl) setOriginalImageUrl(signed.signedUrl);
-                    }
+                if (data.originalPath) {
+                    const { data: signed } = await supabase.storage.from("floor-plans").createSignedUrl(data.originalPath, 3600);
+                    if (signed?.signedUrl) setOriginalImageUrl(signed.signedUrl);
                 }
             }
-            // Save the extracted style prompt so it can be persisted when user saves the style
             setExtractedStylePrompt(data.extractedStylePrompt || null);
             setRenderName("Cloned Style Render");
             setPhase("results");
@@ -256,7 +241,7 @@ export default function ClonePage() {
         }
     }, [isLoggedIn, floorPlanBase64, refs, generateRender, savePendingClone]);
 
-    const handleAuth = useCallback(() => { hasManuallyLoggedOut.current = false; setIsLoggedIn(true); generateRender(); }, [generateRender]);
+    const handleAuth = useCallback(() => { generateRender(); }, [generateRender]);
 
     const handleReset = useCallback(() => {
         refs.forEach(r => URL.revokeObjectURL(r.preview));
@@ -525,26 +510,48 @@ export default function ClonePage() {
                 referencePreviews={refs.map(r => r.preview)}
                 renderedImageUrl={renderedImageUrl}
                 onClose={() => setSaveStyleModalOpen(false)}
-                onSave={async (name) => {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    if (!session) return;
-                    // Use storage paths from the render record (never expire)
-                    let sampleUrls: string[] = [];
-                    if (currentRenderId) {
+                onSave={async (name, chosenThumbnailUrl) => {
+                    if (!userId) return;
+
+                    const isResultChosen = chosenThumbnailUrl === renderedImageUrl;
+                    let sampleUrl = "";
+
+                    if (isResultChosen && currentRenderId) {
+                        // Result chosen — use already-created thumbnail_path (150px JPEG q50)
                         const { data: render } = await supabase.from("renders" as any)
-                            .select("rendered_image_path, reference_image_paths")
+                            .select("thumbnail_path, rendered_image_path")
                             .eq("id", currentRenderId)
                             .single();
-                        if ((render as any)?.reference_image_paths?.length) {
-                            sampleUrls = (render as any).reference_image_paths;
-                        } else if ((render as any)?.rendered_image_path) {
-                            sampleUrls = [(render as any).rendered_image_path];
+                        sampleUrl = (render as any)?.thumbnail_path || (render as any)?.rendered_image_path || "";
+                    } else {
+                        // Reference image chosen — resize to 150px client-side and upload
+                        try {
+                            const thumb = await new Promise<Blob>((resolve, reject) => {
+                                const img = new Image();
+                                img.onload = () => {
+                                    const canvas = document.createElement("canvas");
+                                    const scale = 150 / img.width;
+                                    canvas.width = 150;
+                                    canvas.height = Math.round(img.height * scale);
+                                    canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+                                    canvas.toBlob(b => b ? resolve(b) : reject(), "image/jpeg", 0.5);
+                                };
+                                img.onerror = reject;
+                                img.src = chosenThumbnailUrl;
+                            });
+                            const thumbPath = `style-thumbs/${userId}/${crypto.randomUUID()}.jpg`;
+                            const { error } = await supabase.storage.from("floor-plans").upload(thumbPath, thumb, { contentType: "image/jpeg" });
+                            if (!error) sampleUrl = thumbPath;
+                        } catch {
+                            // Fall back to original reference path if resize fails
+                            sampleUrl = chosenThumbnailUrl;
                         }
                     }
+
                     await supabase.from("style_requests" as any).insert({
-                        user_id: session.user.id,
+                        user_id: userId,
                         title: name,
-                        sample_urls: sampleUrls,
+                        sample_urls: sampleUrl ? [sampleUrl] : [],
                         style_prompt: extractedStylePrompt || null,
                         status: "saved",
                     });
