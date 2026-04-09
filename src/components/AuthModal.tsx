@@ -10,13 +10,12 @@ interface AuthModalProps {
   isCloneMode?: boolean;
 }
 
-export function AuthModal({ open, onAuth, isCloneMode }: AuthModalProps) {
+export function AuthModal({ open, isCloneMode }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
     try {
-      sessionStorage.setItem("auth_redirect", isCloneMode ? "/clone" : "/render");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {

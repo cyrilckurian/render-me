@@ -282,6 +282,15 @@ function RenderPageContent() {
             });
             if (!response.ok) { const err = await response.json(); throw new Error(err.error || "Failed to generate rendering"); }
             const data = await response.json();
+            // Preload image before switching phase so loader stays until image is ready
+            if (data.imageUrl) {
+                await new Promise<void>((resolve) => {
+                    const img = new window.Image();
+                    img.onload = () => resolve();
+                    img.onerror = () => resolve(); // proceed even if preload fails
+                    img.src = data.imageUrl;
+                });
+            }
             setRenderedImageUrl(data.imageUrl);
             if (data.renderId) {
                 setCurrentRenderId(data.renderId);
@@ -379,7 +388,6 @@ function RenderPageContent() {
                         <button
                             onClick={() => {
                                 if (floorPlanBase64 && promptText) savePendingRender(promptText);
-                                sessionStorage.setItem("auth_redirect", "/render");
                                 supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: getRedirectUrl("/render") } });
                             }}
                             className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
