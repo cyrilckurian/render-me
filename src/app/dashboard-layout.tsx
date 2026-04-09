@@ -29,7 +29,7 @@ export default function DashboardLayout({
             // After OAuth redirect, user may land on "/" with token in hash.
             // Redirect them to the intended destination (saved before OAuth) or /render.
             if (event === "SIGNED_IN" && typeof window !== "undefined" && window.location.pathname === "/") {
-                const dest = sessionStorage.getItem("auth_redirect") || "/render";
+                const dest = sessionStorage.getItem("auth_redirect") || "/";
                 sessionStorage.removeItem("auth_redirect");
                 router.replace(dest);
             }
