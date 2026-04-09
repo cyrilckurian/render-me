@@ -21,6 +21,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "RenderMe.Live - Transform your floor plans",
   description: "Upload a sketch, single-line plan, or CAD screenshot and get a client-ready render in seconds.",
+  icons: {
+    icon: "/favicon-new.png",
+  },
 };
 
 export default function RootLayout({
