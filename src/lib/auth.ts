@@ -9,5 +9,10 @@ export function getRedirectUrl(next: string = "/") {
         ? window.location.origin
         : process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
-    return `${base}/auth/callback?next=${encodeURIComponent(normalizedNext)}`;
+    // Store destination so the callback page can redirect after code exchange
+    if (typeof window !== "undefined") {
+        localStorage.setItem("postAuthRedirect", normalizedNext);
+    }
+
+    return `${base}/auth/callback`;
 }
