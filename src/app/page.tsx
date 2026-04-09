@@ -18,8 +18,7 @@ import { useSidebar } from "@/lib/sidebar-context";
 
 export default function Home() {
   const router = useRouter();
-  const { openOverlay } = useSidebar();
-  const { isLoggedIn, authReady } = useSidebar();
+  const { openOverlay, isLoggedIn, authReady } = useSidebar();
 
   const handleSignIn = async () => {
     // Switching to standard Supabase OAuth

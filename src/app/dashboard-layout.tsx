@@ -26,9 +26,16 @@ export default function DashboardLayout({
             setUserId(session?.user?.id ?? null);
             if (event === "INITIAL_SESSION") setAuthReady(true);
             if (!session) { setMobileOpen(false); setOverlayOpen(false); }
+            // After OAuth redirect, user may land on "/" with token in hash.
+            // Redirect them to the intended destination (saved before OAuth) or /render.
+            if (event === "SIGNED_IN" && typeof window !== "undefined" && window.location.pathname === "/") {
+                const dest = sessionStorage.getItem("auth_redirect") || "/render";
+                sessionStorage.removeItem("auth_redirect");
+                router.replace(dest);
+            }
         });
         return () => subscription.unsubscribe();
-    }, []);
+    }, [router]);
 
     const handleSelectRender = useCallback(async (render: Tables<"renders">) => {
         router.push(`/render?id=${render.id}`);

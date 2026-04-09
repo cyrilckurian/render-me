@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Home, Download, ImagePlus, X, CheckCircle2, AlertTriangle, CircleCheck, Bookmark, Menu, Images, ArrowLeft, Trash2, MoreVertical } from "lucide-react";
+import { Home, Download, ImagePlus, X, AlertTriangle, CircleCheck, Bookmark, Menu, Images, ArrowLeft, Trash2, MoreVertical } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useSidebar } from "@/lib/sidebar-context";
 import {
@@ -21,7 +21,6 @@ import { ImageCompareSlider } from "@/components/ImageCompareSlider";
 import { supabase } from "@/integrations/supabase/client";
 import { PENDING_CLONE_KEY } from "@/components/CloneStyleModal";
 import { toast } from "sonner";
-import type { Tables } from "@/integrations/supabase/types";
 import { getRedirectUrl } from "@/lib/auth";
 
 const MAX_REFS = 10;
@@ -275,6 +274,7 @@ export default function ClonePage() {
                         <button
                             onClick={() => {
                                 if (floorPlanBase64) savePendingClone();
+                                sessionStorage.setItem("auth_redirect", "/clone");
                                 supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: getRedirectUrl("/clone") } });
                             }}
                             className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"

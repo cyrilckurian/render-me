@@ -379,6 +379,7 @@ function RenderPageContent() {
                         <button
                             onClick={() => {
                                 if (floorPlanBase64 && promptText) savePendingRender(promptText);
+                                sessionStorage.setItem("auth_redirect", "/render");
                                 supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: getRedirectUrl("/render") } });
                             }}
                             className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
