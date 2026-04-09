@@ -282,7 +282,7 @@ function RenderPageContent() {
             });
             if (!response.ok) { const err = await response.json(); throw new Error(err.error || "Failed to generate rendering"); }
             const data = await response.json();
-            setRenderedImageUrl(data.renderedBase64 || data.imageUrl);
+            setRenderedImageUrl(data.imageUrl);
             if (data.renderId) {
                 setCurrentRenderId(data.renderId);
                 if (data.originalPath) {

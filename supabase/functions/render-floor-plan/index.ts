@@ -339,7 +339,6 @@ RULES:
     return new Response(
       JSON.stringify({
         imageUrl: signedUrlData?.signedUrl ?? null,
-        renderedBase64: generatedImage,
         renderId: insertData?.id ?? null,
         renderPath: renderStoragePath,
         originalPath: originalStoragePath,
